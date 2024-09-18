@@ -1,7 +1,6 @@
 #![allow(unused)]
 
 use crate::error::Error::{self, *};
-use crate::utils::sequence_result;
 
 use roxmltree::Node;
 
@@ -25,7 +24,12 @@ impl Globals {
 
         let doc = roxmltree::Document::parse(data)?;
 
-        for child in doc.root().first_child().unwrap().children() {
+        for child in doc
+            .root()
+            .first_child()
+            .expect("XML doc is empty")
+            .children()
+        {
             match child.tag_name().name() {
                 "Integers" => {
                     add_pairs_to_vec(child, &mut globals.integers, |s| Ok(s.parse::<i32>()?))?

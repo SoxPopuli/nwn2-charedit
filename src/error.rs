@@ -1,4 +1,11 @@
-use std::{num::{ParseFloatError, ParseIntError}, str::FromStr};
+use std::{
+    num::{ParseFloatError, ParseIntError},
+    str::FromStr,
+};
+
+trait ReadFile<'a>: std::io::Read {
+    fn file_name() -> &'a str;
+}
 
 #[derive(Debug)]
 pub enum Error {

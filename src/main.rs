@@ -1,11 +1,10 @@
 #[cfg(test)]
 mod tests;
 
-mod globals;
 mod error;
-mod utils;
+mod globals;
 mod resources;
+mod string_stream;
+mod utils;
 
-fn main() {
-
-}
+fn main() {}
