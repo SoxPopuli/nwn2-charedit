@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod tests;
 
-mod error;
-mod globals;
-mod resources;
-mod string_stream;
-mod utils;
+pub mod error;
+pub mod files;
+pub mod globals;
+pub mod utils;
 
 fn main() {}

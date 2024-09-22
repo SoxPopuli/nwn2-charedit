@@ -3,3 +3,5 @@
 	Column1	Column2	Column3	Column4
 0	TestValue1	100	x	0
 1	TestValue2	200	y	1
+2	"Test Value 3"	300	z	2
+3	**** **** **** ****

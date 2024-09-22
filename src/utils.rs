@@ -1,9 +1,3 @@
-pub trait Pipe {
-    fn pipe<T>(self, f: impl FnOnce(Self) -> T) -> T
-    where
-        Self: Sized,
-    {
-        f(self)
-    }
+pub fn pair_second<A, B>((_, b): (A, B)) -> B {
+    b
 }
-impl<T> Pipe for T where T: ?Sized {}

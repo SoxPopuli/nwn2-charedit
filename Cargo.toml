@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = "0.12.1"
+iced = "0.13.1"
 nom = "7.1.3"
 roxmltree = "0.20.0"
 serde = { version = "1.0.210", features = ["derive"] }
-winnow = "0.6.18"
 zip = "2.2.0"
+rust-utils = { git = "https://github.com/SoxPopuli/rust-utils.git", tag = "v1.4.1", features = [ "vec2d" ]}
