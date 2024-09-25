@@ -1,13 +1,12 @@
 use std::num::{ParseFloatError, ParseIntError};
 
-trait ReadFile<'a>: std::io::Read {
-    fn file_name() -> &'a str;
-}
-
 #[derive(Debug)]
 pub enum Error {
     ParseError(String),
-    FileParseError { file: String, msg: String },
+    EnumError {
+        enum_type: &'static str,
+        msg: String,
+    },
 }
 
 impl std::fmt::Display for Error {
