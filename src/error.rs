@@ -1,6 +1,6 @@
 use std::num::{ParseFloatError, ParseIntError};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     ParseError(String),
     EnumError {
@@ -52,5 +52,18 @@ impl FileError {
             file: file_name,
             err: e,
         })
+    }
+}
+
+pub trait IntoParseError<T> {
+    fn into_parse_error(self) -> Result<T, Error>;
+}
+
+impl<T, E> IntoParseError<T> for Result<T, E>
+where
+    E: std::error::Error,
+{
+    fn into_parse_error(self) -> Result<T, Error> {
+        self.map_err(|e| Error::ParseError(e.to_string()))
     }
 }

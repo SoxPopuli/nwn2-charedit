@@ -2767,8 +2767,8 @@ dependencies = [
 
 [[package]]
 name = "rust-utils"
-version = "1.6.0"
-source = "git+https://github.com/SoxPopuli/rust-utils.git?tag=v1.6.0#59cc4e138ec774d4ed52c00508227fdfce64d823"
+version = "1.7.0"
+source = "git+https://github.com/SoxPopuli/rust-utils.git?tag=v1.7.0#365ebbd0d3db16e88b8dfe9ba52d6d50a353906b"
 
 [[package]]
 name = "rustc-hash"
