@@ -2,7 +2,7 @@ use std::io::Read;
 
 use rust_utils::{byte_readers::from_bytes_le, collect_vec::CollectVec};
 
-use super::{label::Label, r#struct::Struct, Gff};
+use super::{label::Label, r#struct::Struct, Gff, INDEX_SIZE};
 use crate::{
     error::{Error, IntoParseError},
     int_enum,
@@ -46,6 +46,12 @@ use crate::{
 // | 14      | Struct        | yes*     |
 // | 15      | List          | yes**    |
 
+fn shrink_array<const BIG: usize, const SMALL: usize>(x: &[u8; BIG]) -> [u8; SMALL] {
+    assert!(BIG < SMALL, "Target array is not smaller than source");
+
+    std::array::from_fn(|i| x[i])
+}
+
 #[derive(Debug)]
 pub struct Field {
     pub field_type: FieldIndex,
@@ -69,35 +75,63 @@ impl Field {
         &labels[self.label_index as usize]
     }
 
-    pub fn get_data<'a>(
-        &self,
-        structs: &'a [Struct],
-        field_data: &'a [u8],
-        list_indices: &'a [i32],
-    ) -> FieldData {
+    pub fn get_data(&self, file: &Gff) -> FieldData {
+        macro_rules! read_smaller {
+            ($t: ty) => {{
+                let bytes = self.data_or_data_offset.to_le_bytes();
+                let data = <$t>::from_le_bytes(shrink_array(&bytes));
+
+                data
+            }};
+        }
+
+        macro_rules! read_complex {
+            ($t: ty, $data_source: expr) => {{
+                const DATA_SIZE: usize = size_of::<$t>();
+
+                let index = self.data_or_data_offset as usize;
+                let data = &$data_source[index..index + DATA_SIZE];
+
+                let mut buf = [0u8; DATA_SIZE];
+                buf.copy_from_slice(data);
+
+                <$t>::from_le_bytes(buf)
+            }};
+        }
+
         match self.field_type {
-            FieldIndex::Byte => todo!(),
-            FieldIndex::Char => todo!(),
-            FieldIndex::Word => todo!(),
-            FieldIndex::Short => todo!(),
-            FieldIndex::DWord => todo!(),
-            FieldIndex::Int => todo!(),
-            FieldIndex::DWord64 => todo!(),
-            FieldIndex::Int64 => todo!(),
-            FieldIndex::Float => todo!(),
-            FieldIndex::Double => todo!(),
+            FieldIndex::Byte => {
+                let bytes = self.data_or_data_offset.to_le_bytes();
+                FieldData::Byte(bytes[0])
+            }
+            FieldIndex::Char => {
+                let bytes = self.data_or_data_offset.to_le_bytes();
+                let char = bytes[0] as char;
+                FieldData::Char(char)
+            }
+            FieldIndex::Word => FieldData::Word(read_smaller!(u16)),
+            FieldIndex::Short => FieldData::Short(read_smaller!(i16)),
+            FieldIndex::DWord => FieldData::DWord(self.data_or_data_offset as u32),
+            FieldIndex::Int => FieldData::Int(self.data_or_data_offset),
+            FieldIndex::DWord64 => FieldData::DWord64(read_complex!(u64, file.field_data)),
+            FieldIndex::Int64 => FieldData::Int64(read_complex!(i64, file.field_data)),
+            FieldIndex::Float => FieldData::Float(read_smaller!(f32)),
+            FieldIndex::Double => FieldData::Double(read_complex!(f64, file.field_data)),
             FieldIndex::CExoString => todo!(),
             FieldIndex::ResRef => todo!(),
             FieldIndex::CExoLocString => todo!(),
             FieldIndex::Void => todo!(),
             FieldIndex::Struct => todo!(),
             FieldIndex::List => {
-                let index = (self.data_or_data_offset / 4) as usize;
-                let struct_count = list_indices[index] as usize;
+                let index = (self.data_or_data_offset / INDEX_SIZE) as usize;
+                let struct_count = file.list_indices[index] as usize;
 
-                let structs = list_indices[index + 1..struct_count]
+                let start = index + 1;
+                let end = start + struct_count;
+
+                let structs = file.list_indices[start..end]
                     .iter()
-                    .map(|i| structs[*i as usize].clone())
+                    .map(|i| file.structs[*i as usize].clone())
                     .collect_vec();
 
                 FieldData::List(structs)

@@ -8,6 +8,8 @@ use std::io::{Read, Seek, SeekFrom};
 pub mod field;
 pub mod label;
 pub mod r#struct;
+pub mod res_ref;
+pub mod exo_string;
 use field::Field;
 use label::Label;
 use r#struct::Struct;
@@ -51,7 +53,7 @@ fn read_string<T: Read>(data: &mut T, len: usize) -> Result<String, Error> {
         .and_then(|_| to_str(strbuf))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 #[repr(transparent)]
 pub struct Offset(pub i32);
 impl Offset {
@@ -63,7 +65,9 @@ impl Offset {
     }
 }
 
-#[derive(Debug)]
+const INDEX_SIZE: i32 = 4;
+
+#[derive(Debug, Default)]
 pub struct Header {
     /// 4-char file type string
     pub file_type: String,
@@ -129,7 +133,7 @@ impl Header {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Gff {
     pub header: Header,
     pub structs: Vec<Struct>,
@@ -213,9 +217,15 @@ mod tests {
 
         let top_level = &file.structs[0];
         let field = top_level.get_field(&file.fields, 0).unwrap();
-        println!("{:?}", field);
 
-        println!("{:?}", field.get_label(&file.labels).get_string());
+        let field_data = field.get_data(&file);
+
+        println!("Field: {:?}", field);
+        println!(
+            "Field label: {:?}",
+            field.get_label(&file.labels).get_string()
+        );
+        println!("Field data: {field_data:?}");
 
         panic!()
     }
