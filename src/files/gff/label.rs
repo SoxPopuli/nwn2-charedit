@@ -1,49 +1,57 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use crate::error::{Error, IntoParseError};
 
 const LABEL_SIZE: usize = 16;
 
-#[derive(Debug)]
-pub struct Label(pub [u8; LABEL_SIZE]);
+#[derive(Debug, PartialEq, Eq)]
+pub struct Label(pub String);
 impl Label {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
         let mut buf = [0u8; LABEL_SIZE];
         data.read_exact(&mut buf).into_parse_error()?;
 
-        Ok(Label(buf))
+        Self::new(buf)
     }
 
-    pub fn get_string(&self) -> Result<&str, Error> {
-        let str_end = self.0.into_iter().position(|x| x == b'\0');
-
-        let slice = if let Some(end) = str_end {
-            &self.0[..end]
-        } else {
-            &self.0
-        };
-
-        std::str::from_utf8(slice).into_parse_error()
+    pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        writer.write_all(&self.to_array()).into_parse_error()
     }
 
-    /// # Safety
-    ///
-    /// Data must be valid UTF-8
-    pub unsafe fn get_string_unchecked(&self) -> &str {
-        let str_end = self.0.into_iter().position(|x| x == b'\0');
-
-        let slice = if let Some(end) = str_end {
-            &self.0[..end]
-        } else {
-            &self.0
+    pub fn new(data: [u8; LABEL_SIZE]) -> Result<Self, Error> {
+        let strend = data.into_iter().position(|x| x == 0);
+        let slice = match strend {
+            Some(end) => &data[..end],
+            None => &data,
         };
 
-        std::str::from_utf8_unchecked(slice)
+        let s = std::str::from_utf8(slice).into_parse_error()?;
+        Ok(Label(s.to_string()))
+    }
+
+    pub fn to_array(&self) -> [u8; LABEL_SIZE] {
+        let mut buf = [0u8; LABEL_SIZE];
+        let strlen = self.0.len();
+
+        buf[..strlen].copy_from_slice(self.0.as_bytes());
+        buf
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq<&str> for Label {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use super::*;
 
     #[test]
@@ -52,27 +60,38 @@ mod tests {
             b'h', b'e', b'l', b'l', b'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
 
-        let label = Label(trailing_zeros);
+        let label = Label::new(trailing_zeros).unwrap();
 
-        unsafe {
-            assert_eq!(label.get_string(), Ok("hello"));
-            assert_eq!(label.get_string_unchecked(), "hello");
-        }
+        assert_eq!(label, "hello");
     }
 
     #[test]
     fn empty_test() {
         let empty = [0u8; LABEL_SIZE];
-        let label = Label(empty);
+        let label = Label::new(empty).unwrap();
 
-        assert_eq!(label.get_string(), Ok(""));
+        assert_eq!(label, "");
     }
 
     #[test]
     fn full_test() {
         let full = [b'a'; LABEL_SIZE];
-        let label = Label(full);
+        let label = Label::new(full).unwrap();
 
-        assert_eq!(label.get_string(), Ok("aaaaaaaaaaaaaaaa"));
+        assert_eq!(label, "aaaaaaaaaaaaaaaa");
+    }
+
+    #[test]
+    fn read_and_write_test() {
+        let data = [b'h', b'i', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+        let label = Label::new(data).unwrap();
+
+        assert_eq!(label, "hi");
+
+        let mut buf = Cursor::new(vec![]);
+        label.write(&mut buf).unwrap();
+
+        assert_eq!(buf.into_inner(), data,)
     }
 }

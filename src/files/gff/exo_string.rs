@@ -21,13 +21,12 @@ mod tests {
 
     #[test]
     fn read_test() {
-        let mut data = 
-            Cursor::new(Vec::<u8>::new());
+        let mut data = Cursor::new(Vec::<u8>::new());
 
-        let str_data =
-            [ b'T', b'e', b's', b't' ];
+        let str_data = [b'T', b'e', b's', b't'];
 
-        data.write_all( &(str_data.len() as i32).to_le_bytes() ).unwrap();
+        data.write_all(&(str_data.len() as i32).to_le_bytes())
+            .unwrap();
         data.write_all(&str_data).unwrap();
 
         data.rewind().unwrap();

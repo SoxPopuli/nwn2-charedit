@@ -5,11 +5,11 @@ use crate::int_enum;
 use rust_utils::{byte_readers::FromBytes, collect_vec::CollectVecResult};
 use std::io::{Read, Seek, SeekFrom};
 
+pub mod exo_string;
 pub mod field;
 pub mod label;
-pub mod r#struct;
 pub mod res_ref;
-pub mod exo_string;
+pub mod r#struct;
 use field::Field;
 use label::Label;
 use r#struct::Struct;
@@ -221,10 +221,7 @@ mod tests {
         let field_data = field.get_data(&file);
 
         println!("Field: {:?}", field);
-        println!(
-            "Field label: {:?}",
-            field.get_label(&file.labels).get_string()
-        );
+        println!("Field label: {:?}", field.get_label(&file.labels).0);
         println!("Field data: {field_data:?}");
 
         panic!()
