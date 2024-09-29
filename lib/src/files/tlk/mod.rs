@@ -64,8 +64,8 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn x() {
-        let data = Cursor::new(include_bytes!("../../../../../Downloads/dialog.TLK"));
+    fn read_test() {
+        let data = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
 
         let _tlk = Tlk::read(data).unwrap();
     }
