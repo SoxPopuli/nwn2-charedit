@@ -34,13 +34,11 @@ impl Globals {
                 "Integers" => {
                     add_pairs_to_vec(child, &mut globals.integers, |s| Ok(s.parse::<i32>()?))?
                 }
-                "Booleans" => {
-                    add_pairs_to_vec(child, &mut globals.booleans, |s| Ok(parse_bool(&s)?))?
-                }
+                "Booleans" => add_pairs_to_vec(child, &mut globals.booleans, |s| parse_bool(&s))?,
                 "Floats" => {
                     add_pairs_to_vec(child, &mut globals.floats, |s| Ok(s.parse::<f32>()?))?
                 }
-                "Strings" => add_pairs_to_vec(child, &mut globals.strings, |s| Ok(s))?,
+                "Strings" => add_pairs_to_vec(child, &mut globals.strings, Ok)?,
 
                 _ => continue,
             }

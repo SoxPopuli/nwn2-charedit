@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use crate::error::{Error, IntoParseError};
+use crate::error::{Error, IntoError};
 
 const LABEL_SIZE: usize = 16;
 
@@ -15,7 +15,7 @@ impl Label {
     }
 
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        writer.write_all(&self.to_array()).into_parse_error()
+        writer.write_all(&self.to_array()).into_write_error()
     }
 
     pub fn new(data: [u8; LABEL_SIZE]) -> Result<Self, Error> {

@@ -4,7 +4,7 @@ use rust_utils::{byte_readers::from_bytes_le, collect_vec::CollectVec};
 
 use super::{label::Label, r#struct::Struct, Gff, INDEX_SIZE};
 use crate::{
-    error::{Error, IntoParseError},
+    error::{Error, IntoError},
     int_enum,
 };
 

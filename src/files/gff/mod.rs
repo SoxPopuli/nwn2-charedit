@@ -1,69 +1,16 @@
-use crate::error::Error::{self, *};
-use crate::error::IntoParseError;
+use super::{read_string, Offset};
+use crate::error::{Error, IntoError};
 
-use crate::int_enum;
 use rust_utils::{byte_readers::FromBytes, collect_vec::CollectVecResult};
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek};
 
 pub mod exo_string;
 pub mod field;
 pub mod label;
-pub mod res_ref;
 pub mod r#struct;
 use field::Field;
 use label::Label;
 use r#struct::Struct;
-
-int_enum! { Language,
-    English, 0,
-    French, 1,
-    German, 2,
-    Italian, 3,
-    Spanish, 4,
-    Polish, 5,
-    Korean, 128,
-    ChineseTraditional, 129,
-    ChineseSimplified, 130,
-    Japanese, 131
-}
-impl Default for Language {
-    fn default() -> Self {
-        Self::English
-    }
-}
-
-int_enum! { Gender,
-    Masculine, 0,
-    Feminine, 1
-}
-
-impl Default for Gender {
-    fn default() -> Self {
-        Self::Masculine
-    }
-}
-
-fn read_string<T: Read>(data: &mut T, len: usize) -> Result<String, Error> {
-    let mut strbuf = vec![0u8; len];
-
-    let to_str = |v| String::from_utf8(v).map_err(|e| ParseError(e.to_string()));
-
-    data.read_exact(strbuf.as_mut())
-        .map_err(|e| ParseError(e.to_string()))
-        .and_then(|_| to_str(strbuf))
-}
-
-#[derive(Debug, Default)]
-#[repr(transparent)]
-pub struct Offset(pub i32);
-impl Offset {
-    fn seek_to<T>(&self, read: &mut T) -> Result<u64, Error>
-    where
-        T: Seek,
-    {
-        read.seek(SeekFrom::Start(self.0 as u64)).into_parse_error()
-    }
-}
 
 const INDEX_SIZE: i32 = 4;
 

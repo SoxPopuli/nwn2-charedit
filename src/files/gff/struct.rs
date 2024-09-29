@@ -1,4 +1,4 @@
-use crate::error::{Error, IntoParseError};
+use crate::error::{Error, IntoError};
 use crate::files::gff::{Field, Gff};
 use rust_utils::byte_readers::from_bytes_le;
 use std::io::Read;

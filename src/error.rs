@@ -3,6 +3,7 @@ use std::num::{ParseFloatError, ParseIntError};
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     ParseError(String),
+    WriteError(String),
     EnumError {
         enum_type: &'static str,
         msg: String,
@@ -55,15 +56,20 @@ impl FileError {
     }
 }
 
-pub trait IntoParseError<T> {
+pub trait IntoError<T> {
     fn into_parse_error(self) -> Result<T, Error>;
+    fn into_write_error(self) -> Result<T, Error>;
 }
 
-impl<T, E> IntoParseError<T> for Result<T, E>
+impl<T, E> IntoError<T> for Result<T, E>
 where
     E: std::error::Error,
 {
     fn into_parse_error(self) -> Result<T, Error> {
         self.map_err(|e| Error::ParseError(e.to_string()))
+    }
+
+    fn into_write_error(self) -> Result<T, Error> {
+        self.map_err(|e| Error::WriteError(e.to_string()))
     }
 }
