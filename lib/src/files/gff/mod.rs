@@ -158,7 +158,7 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn x() {
+    fn read_test() {
         let file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
         let file = Gff::read(file).unwrap();
 

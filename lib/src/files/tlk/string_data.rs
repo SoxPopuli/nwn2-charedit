@@ -4,16 +4,16 @@ use crate::{
 };
 use std::{
     io::{Read, Seek, SeekFrom},
-    rc::Rc,
+    sync::Arc,
 };
 
-fn read_str(mut data: impl Read, strlen: usize) -> Result<Rc<str>, Error> {
+fn read_str(mut data: impl Read, strlen: usize) -> Result<Arc<str>, Error> {
     let mut buf = vec![0u8; strlen];
 
     data.read_exact(&mut buf).into_parse_error()?;
 
     let x = String::from_utf8_lossy(&buf);
-    let ptr: Rc<str> = x.into();
+    let ptr: Arc<str> = x.into();
 
     Ok(ptr)
 }
@@ -26,7 +26,7 @@ fn read_string(mut data: impl Read, strlen: usize) -> Result<String, Error> {
     Ok(String::from_utf8_lossy(&buf).to_string())
 }
 
-pub fn read(mut data: impl Read + Seek, entries_offset: u64) -> Result<Rc<str>, Error> {
+pub fn read(mut data: impl Read + Seek, entries_offset: u64) -> Result<Arc<str>, Error> {
     // let _flags: u32 = from_bytes_le(&mut data)?;
     // let _sound_res_ref: [u8; 16] = read_bytes(&mut data)?;
     // let _volume_variance: u32 = from_bytes_le(&mut data)?;
@@ -42,9 +42,11 @@ pub fn read(mut data: impl Read + Seek, entries_offset: u64) -> Result<Rc<str>, 
 
     let current_position = data.stream_position().into_parse_error()?;
 
-    let string = {
+    let string = if string_size > 0 {
         offset_to_string.seek_with_offet(&mut data, entries_offset)?;
         read_str(&mut data, string_size as usize)?
+    } else {
+        super::EMPTY_STRING.clone()
     };
 
     data.seek(SeekFrom::Start(current_position))

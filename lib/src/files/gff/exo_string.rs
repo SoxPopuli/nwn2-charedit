@@ -4,7 +4,10 @@ use crate::{
     error::{Error, IntoError},
     files::{from_bytes_le, tlk::Tlk, Gender, Language},
 };
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    sync::Arc,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ExoString(pub String);
@@ -32,20 +35,22 @@ impl ExoString {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ExoLocString<'a> {
-    tlk_string: &'a str,
+pub struct ExoLocString {
+    tlk_string: Arc<str>,
     substrings: Vec<ExoLocSubString>,
 }
-impl<'a> ExoLocString<'a> {
-    pub fn read(mut data: impl Read, tlk: &'a Tlk) -> Result<Self, Error> {
+impl ExoLocString {
+    pub fn read(mut data: impl Read, tlk: &Tlk) -> Result<Self, Error> {
         let _size = from_bytes_le::<u32>(&mut data)? as usize;
         let str_ref: u32 = from_bytes_le(&mut data)?;
         let str_count: u32 = from_bytes_le(&mut data)?;
 
         let tlk_string = if str_ref == u32::MAX {
-            ""
+            crate::files::tlk::get_empty_string()
         } else {
             tlk.get_from_str_ref(str_ref as u32)
+                .unwrap_or_else(|| panic!("No string found for ref: {str_ref}"))
+                .clone()
         };
 
         let substrings = (0..str_count)

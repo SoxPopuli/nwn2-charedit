@@ -5,7 +5,7 @@ use crate::error::Error;
 use rust_utils::collect_vec::CollectVecResult;
 use std::{
     io::{Read, Seek},
-    rc::Rc,
+    sync::{Arc, LazyLock},
 };
 
 #[derive(Debug, PartialEq)]
@@ -44,10 +44,19 @@ impl Header {
     }
 }
 
+static EMPTY_STRING: LazyLock<Arc<str>> = LazyLock::new(|| {
+    let s = "";
+    Arc::<str>::from(s)
+});
+
+pub fn get_empty_string() -> Arc<str> {
+    EMPTY_STRING.clone()
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Tlk {
     pub header: Header,
-    pub strings: Vec<Rc<str>>,
+    pub strings: Vec<Arc<str>>,
 }
 impl Tlk {
     pub fn read(mut data: impl Read + Seek) -> Result<Self, Error> {
@@ -60,9 +69,9 @@ impl Tlk {
         Ok(Self { header, strings })
     }
 
-    pub fn get_from_str_ref(&self, str_ref: u32) -> Option<&Rc<str>> {
+    pub fn get_from_str_ref(&self, str_ref: u32) -> Option<&Arc<str>> {
         if str_ref == u32::MAX {
-            None
+            Some(&*EMPTY_STRING)
         } else {
             self.strings.get(str_ref as usize)
         }
@@ -84,9 +93,25 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
+    #[ignore = "requires proprietary file"]
     fn read_test() {
+        use std::time::SystemTime;
+
         let data = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
 
+        let start = SystemTime::now();
         let _tlk = Tlk::read(data).unwrap();
+        let end = SystemTime::now();
+
+        let time_to_alloc = end.duration_since(start).unwrap();
+        println!("TLK: time to alloc: {:>5}µs", time_to_alloc.as_micros());
+
+        let start = SystemTime::now();
+        drop(_tlk);
+        let end = SystemTime::now();
+
+        let time_to_drop = end.duration_since(start).unwrap();
+
+        println!("TLK: time to drop:  {:>5}µs", time_to_drop.as_micros());
     }
 }
