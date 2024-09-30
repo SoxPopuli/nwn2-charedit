@@ -3,7 +3,10 @@ pub mod string_data;
 use super::{from_bytes_le, read_string, Language};
 use crate::error::Error;
 use rust_utils::collect_vec::CollectVecResult;
-use std::io::{Read, Seek};
+use std::{
+    io::{Read, Seek},
+    rc::Rc,
+};
 
 #[derive(Debug, PartialEq)]
 pub struct Header {
@@ -44,7 +47,7 @@ impl Header {
 #[derive(Debug, PartialEq)]
 pub struct Tlk {
     pub header: Header,
-    pub strings: Vec<String>,
+    pub strings: Vec<Rc<str>>,
 }
 impl Tlk {
     pub fn read(mut data: impl Read + Seek) -> Result<Self, Error> {
@@ -55,6 +58,23 @@ impl Tlk {
             .collect_vec_result()?;
 
         Ok(Self { header, strings })
+    }
+
+    pub fn get_from_str_ref(&self, str_ref: u32) -> Option<&Rc<str>> {
+        if str_ref == u32::MAX {
+            None
+        } else {
+            self.strings.get(str_ref as usize)
+        }
+    }
+}
+
+impl std::ops::Index<u32> for Tlk {
+    type Output = str;
+    fn index(&self, index: u32) -> &Self::Output {
+        self.get_from_str_ref(index)
+            .map(|ptr| ptr.as_ref())
+            .unwrap_or("")
     }
 }
 

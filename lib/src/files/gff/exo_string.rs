@@ -1,13 +1,16 @@
-use crate::error::{Error, IntoError};
-use rust_utils::byte_readers::{from_bytes_le, FromBytes};
+use rust_utils::collect_vec::CollectVecResult;
 
+use crate::{
+    error::{Error, IntoError},
+    files::{from_bytes_le, tlk::Tlk, Gender, Language},
+};
 use std::io::{Read, Write};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ExoString(pub String);
 impl ExoString {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
-        let size: i32 = from_bytes_le(&mut data).into_parse_error()?;
+        let size: u32 = from_bytes_le(&mut data).into_parse_error()?;
 
         let buf = {
             let mut buf = vec![0u8; size as usize];
@@ -21,7 +24,7 @@ impl ExoString {
     }
 
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        let sz = self.0.len() as i32;
+        let sz = self.0.len() as u32;
 
         writer.write_all(&sz.to_le_bytes()).into_write_error()?;
         writer.write_all(self.0.as_bytes()).into_write_error()
@@ -29,14 +32,61 @@ impl ExoString {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ExoLocString();
-impl ExoLocString {
-    pub fn read(mut data: impl Read) -> Result<(), Error> {
-        let size = i32::from_bytes_le(&mut data).into_parse_error()? as usize;
-        let str_ref = i32::from_bytes_le(&mut data).into_parse_error()?;
-        let str_count = i32::from_bytes_le(&mut data).into_parse_error()?;
+pub struct ExoLocString<'a> {
+    tlk_string: &'a str,
+    substrings: Vec<ExoLocSubString>,
+}
+impl<'a> ExoLocString<'a> {
+    pub fn read(mut data: impl Read, tlk: &'a Tlk) -> Result<Self, Error> {
+        let _size = from_bytes_le::<u32>(&mut data)? as usize;
+        let str_ref: u32 = from_bytes_le(&mut data)?;
+        let str_count: u32 = from_bytes_le(&mut data)?;
 
-        todo!();
+        let tlk_string = if str_ref == u32::MAX {
+            ""
+        } else {
+            tlk.get_from_str_ref(str_ref as u32)
+        };
+
+        let substrings = (0..str_count)
+            .map(|_| ExoLocSubString::read(&mut data))
+            .collect_vec_result()?;
+
+        Ok(Self {
+            tlk_string,
+            substrings,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ExoLocSubString {
+    pub gender: Gender,
+    pub language: Language,
+    pub data: String,
+}
+impl ExoLocSubString {
+    fn read(mut data: impl Read) -> Result<Self, Error> {
+        let string_id: i32 = from_bytes_le(&mut data)?;
+        let string_length: i32 = from_bytes_le(&mut data)?;
+
+        let gender = Gender::try_from((string_id & 1) as u8)?;
+        let language = {
+            let id = string_id & (!1);
+            Language::try_from((id / 2) as u8)
+        }?;
+
+        let s = {
+            let mut buf = vec![0u8; string_length as usize];
+            data.read_exact(&mut buf).into_parse_error()?;
+            String::from_utf8_lossy(&buf).to_string()
+        };
+
+        Ok(Self {
+            gender,
+            language,
+            data: s,
+        })
     }
 }
 
