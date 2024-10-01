@@ -38,6 +38,20 @@ where
     pub(crate) entry_cache: HashMap<u32, Arc<str>>,
 }
 
+impl<R> Default for TlkReader<R>
+where
+    R: Read + Seek + Default,
+{
+    fn default() -> Self {
+        Self {
+            data: R::default(),
+            string_info: Vec::default(),
+            string_entry_offset: Offset::default(),
+            entry_cache: HashMap::default(),
+        }
+    }
+}
+
 fn read_str(mut data: impl Read, strlen: usize) -> Result<Arc<str>, Error> {
     let mut buf = vec![0u8; strlen];
 

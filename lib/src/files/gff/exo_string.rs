@@ -102,7 +102,7 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn read_and_write_test() {
+    fn exo_read_and_write_test() {
         let data = Cursor::new([0x04, 0x00, 0x00, 0x00, b'T', b'e', b's', b't']);
 
         let x = ExoString::read(data.clone()).unwrap();

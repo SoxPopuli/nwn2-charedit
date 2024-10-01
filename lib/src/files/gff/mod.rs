@@ -1,3 +1,6 @@
+// Note to self: type names ending Data usually means data as read from the file,
+// i.e. before being resolved into something more useable
+
 use super::{from_bytes_le, read_string, Offset};
 use crate::error::{Error, IntoError};
 
@@ -8,9 +11,10 @@ pub mod exo_string;
 pub mod field;
 pub mod label;
 pub mod r#struct;
-use field::Field;
+pub mod void;
+use field::FieldData;
 use label::Label;
-use r#struct::Struct;
+use r#struct::StructData;
 
 const INDEX_SIZE: i32 = 4;
 
@@ -79,29 +83,29 @@ impl Header {
 }
 
 #[derive(Debug, Default)]
-pub struct Gff {
+pub struct GffData {
     pub header: Header,
-    pub structs: Vec<Struct>,
-    pub fields: Vec<Field>,
+    pub structs: Vec<StructData>,
+    pub fields: Vec<FieldData>,
     pub labels: Vec<Label>,
     pub field_data: Vec<u8>,
     pub field_indices: Vec<i32>,
     pub list_indices: Vec<i32>,
 }
-impl Gff {
+impl GffData {
     pub fn read(mut data: impl Read + Seek) -> Result<Self, Error> {
         let header = Header::read(&mut data)?;
 
         header.struct_offset.seek_to(&mut data)?;
 
         let structs = (0..header.struct_count)
-            .map(|_| Struct::read(&mut data))
+            .map(|_| StructData::read(&mut data))
             .collect_vec_result()?;
 
         header.field_offset.seek_to(&mut data)?;
 
         let fields = (0..header.field_count)
-            .map(|_| Field::read(&mut data))
+            .map(|_| FieldData::read(&mut data))
             .collect_vec_result()?;
 
         header.label_offset.seek_to(&mut data)?;
@@ -152,23 +156,23 @@ impl Gff {
 
 #[cfg(test)]
 mod tests {
+    use crate::files::tlk::Tlk;
+
     use super::*;
     use std::io::Cursor;
 
     #[test]
     fn read_test() {
         let file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
-        let file = Gff::read(file).unwrap();
+        let file = GffData::read(file).unwrap();
 
-        let top_level = &file.structs[0];
-        let field = top_level.get_field(&file.fields, 0).unwrap();
+        let tlk = Tlk::read(
+            Cursor::new(
+                include_bytes!("../../tests/files/dialog.TLK")
+            )
+        ).unwrap();
 
-        let field_data = field.get_data(&file);
-
-        println!("Field: {:?}", field);
-        println!("Field label: {:?}", field.get_label(&file.labels).0);
-        println!("Field data: {field_data:?}");
-
-        panic!()
+        let top_level = file.structs[0].resolve(&file, &tlk).unwrap();
+        panic!("{top_level:#?}")
     }
 }

@@ -10,7 +10,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Header {
     file_type: String,
     file_version: f32,
@@ -59,6 +59,17 @@ pub fn get_empty_string() -> Arc<str> {
 pub struct Tlk<R: Read + Seek> {
     pub header: Header,
     pub reader: RefCell<TlkReader<R>>,
+}
+impl<R> Default for Tlk<R>
+where
+    R: Read + Seek + Default,
+{
+    fn default() -> Self {
+        Self {
+            header: Default::default(),
+            reader: RefCell::default(),
+        }
+    }
 }
 impl<R: Read + Seek> Tlk<R> {
     pub fn read(mut data: R) -> Result<Self, Error> {

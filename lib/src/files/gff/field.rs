@@ -1,10 +1,16 @@
-use std::io::Read;
+use std::io::{Read, Seek};
 
-use rust_utils::{byte_readers::from_bytes_le, collect_vec::CollectVec};
+use rust_utils::{byte_readers::from_bytes_le, collect_vec::CollectVecResult, pipe::Pipe};
 
-use super::{label::Label, r#struct::Struct, Gff, INDEX_SIZE};
+use super::{
+    exo_string::{ExoLocString, ExoString},
+    label::Label,
+    r#struct::Struct,
+    GffData, INDEX_SIZE,
+};
 use crate::{
     error::{Error, IntoError},
+    files::{gff::void::Void, res_ref::ResRef, tlk::Tlk},
     int_enum,
 };
 
@@ -47,18 +53,18 @@ use crate::{
 // | 15      | List          | yes**    |
 
 fn shrink_array<const BIG: usize, const SMALL: usize>(x: &[u8; BIG]) -> [u8; SMALL] {
-    assert!(BIG < SMALL, "Target array is not smaller than source");
+    assert!(BIG <= SMALL, "Target array is not smaller than source");
 
     std::array::from_fn(|i| x[i])
 }
 
 #[derive(Debug)]
-pub struct Field {
+pub struct FieldData {
     pub field_type: FieldIndex,
     pub label_index: i32,
     pub data_or_data_offset: i32,
 }
-impl Field {
+impl FieldData {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
         let field_type = from_bytes_le::<i32>(&mut data)
             .into_parse_error()
@@ -75,7 +81,15 @@ impl Field {
         &labels[self.label_index as usize]
     }
 
-    pub fn get_data(&self, file: &Gff) -> FieldData {
+    fn get_field_data_offset<'a>(&'a self, file: &'a GffData) -> &'a [u8] {
+        let offset = self.data_or_data_offset as usize;
+        &file.field_data[offset..]
+    }
+
+    pub fn get_data<R>(&self, file: &GffData, tlk: &Tlk<R>) -> Result<Field, Error>
+    where
+        R: Read + Seek,
+    {
         macro_rules! read_smaller {
             ($t: ty) => {{
                 let bytes = self.data_or_data_offset.to_le_bytes();
@@ -102,26 +116,50 @@ impl Field {
         match self.field_type {
             FieldIndex::Byte => {
                 let bytes = self.data_or_data_offset.to_le_bytes();
-                FieldData::Byte(bytes[0])
+                Ok(Field::Byte(bytes[0]))
             }
             FieldIndex::Char => {
                 let bytes = self.data_or_data_offset.to_le_bytes();
                 let char = bytes[0] as char;
-                FieldData::Char(char)
+                Ok(Field::Char(char))
             }
-            FieldIndex::Word => FieldData::Word(read_smaller!(u16)),
-            FieldIndex::Short => FieldData::Short(read_smaller!(i16)),
-            FieldIndex::DWord => FieldData::DWord(self.data_or_data_offset as u32),
-            FieldIndex::Int => FieldData::Int(self.data_or_data_offset),
-            FieldIndex::DWord64 => FieldData::DWord64(read_complex!(u64, file.field_data)),
-            FieldIndex::Int64 => FieldData::Int64(read_complex!(i64, file.field_data)),
-            FieldIndex::Float => FieldData::Float(read_smaller!(f32)),
-            FieldIndex::Double => FieldData::Double(read_complex!(f64, file.field_data)),
-            FieldIndex::CExoString => todo!(),
-            FieldIndex::ResRef => todo!(),
-            FieldIndex::CExoLocString => todo!(),
-            FieldIndex::Void => todo!(),
-            FieldIndex::Struct => todo!(),
+            FieldIndex::Word => Ok(Field::Word(read_smaller!(u16))),
+            FieldIndex::Short => Ok(Field::Short(read_smaller!(i16))),
+            FieldIndex::DWord => Ok(Field::DWord(self.data_or_data_offset as u32)),
+            FieldIndex::Int => Ok(Field::Int(self.data_or_data_offset)),
+            FieldIndex::DWord64 => Ok(Field::DWord64(read_complex!(u64, file.field_data))),
+            FieldIndex::Int64 => Ok(Field::Int64(read_complex!(i64, file.field_data))),
+            FieldIndex::Float => Ok(Field::Float(read_smaller!(f32))),
+            FieldIndex::Double => Ok(Field::Double(read_complex!(f64, file.field_data))),
+            FieldIndex::CExoString => {
+                let mut data = self.get_field_data_offset(file);
+
+                ExoString::read(&mut data)?.pipe(Field::CExoString).pipe(Ok)
+            }
+            FieldIndex::ResRef => {
+                let mut data = self.get_field_data_offset(file);
+
+                let res_ref = ResRef::read(&mut data)?;
+                Ok(Field::CResRef(res_ref))
+            }
+            FieldIndex::CExoLocString => {
+                let mut data = self.get_field_data_offset(file);
+
+                let s = ExoLocString::read(&mut data, tlk)?;
+
+                Ok(Field::CExoLocString(s))
+            }
+            FieldIndex::Void => {
+                let mut data = self.get_field_data_offset(file);
+
+                Ok(Field::Void(Void::read(&mut data)?))
+            }
+            FieldIndex::Struct => {
+                let index = self.data_or_data_offset as usize;
+                let s = file.structs[index].resolve(file, tlk)?;
+
+                Ok(Field::Struct(s))
+            }
             FieldIndex::List => {
                 let index = (self.data_or_data_offset / INDEX_SIZE) as usize;
                 let struct_count = file.list_indices[index] as usize;
@@ -131,10 +169,10 @@ impl Field {
 
                 let structs = file.list_indices[start..end]
                     .iter()
-                    .map(|i| file.structs[*i as usize].clone())
-                    .collect_vec();
+                    .map(|i| file.structs[*i as usize].resolve(file, tlk))
+                    .collect_vec_result()?;
 
-                FieldData::List(structs)
+                Ok(Field::List(structs))
             }
         }
     }
@@ -182,13 +220,13 @@ impl FieldIndex {
     }
 }
 
-#[derive(Debug)]
-pub enum FieldData {
+#[derive(Debug, PartialEq)]
+pub enum Field {
     Byte(u8),
-    CExoLocString(String),
-    CExoString(String),
+    CExoLocString(ExoLocString),
+    CExoString(ExoString),
     Char(char),
-    CResRef(String),
+    CResRef(ResRef),
     Double(f64),
     DWord(u32),
     DWord64(u64),
@@ -196,31 +234,43 @@ pub enum FieldData {
     Int(i32),
     Int64(i64),
     Short(i16),
-    Void(Vec<u8>),
+    Void(Void),
     Word(u16),
     Struct(Struct),
     List(Vec<Struct>),
 }
 
-impl FieldData {
+impl Field {
     pub fn get_field_index(&self) -> FieldIndex {
         match self {
-            FieldData::Byte(_) => FieldIndex::Byte,
-            FieldData::CExoLocString(_) => FieldIndex::CExoLocString,
-            FieldData::CExoString(_) => FieldIndex::CExoString,
-            FieldData::Char(_) => FieldIndex::Char,
-            FieldData::CResRef(_) => FieldIndex::ResRef,
-            FieldData::Double(_) => FieldIndex::Double,
-            FieldData::DWord(_) => FieldIndex::DWord,
-            FieldData::DWord64(_) => FieldIndex::DWord64,
-            FieldData::Float(_) => FieldIndex::Float,
-            FieldData::Int(_) => FieldIndex::Int,
-            FieldData::Int64(_) => FieldIndex::Int64,
-            FieldData::Short(_) => FieldIndex::Short,
-            FieldData::Void(_) => FieldIndex::Void,
-            FieldData::Word(_) => FieldIndex::Word,
-            FieldData::Struct(_) => FieldIndex::Struct,
-            FieldData::List(_) => FieldIndex::List,
+            Field::Byte(_) => FieldIndex::Byte,
+            Field::CExoLocString(_) => FieldIndex::CExoLocString,
+            Field::CExoString(_) => FieldIndex::CExoString,
+            Field::Char(_) => FieldIndex::Char,
+            Field::CResRef(_) => FieldIndex::ResRef,
+            Field::Double(_) => FieldIndex::Double,
+            Field::DWord(_) => FieldIndex::DWord,
+            Field::DWord64(_) => FieldIndex::DWord64,
+            Field::Float(_) => FieldIndex::Float,
+            Field::Int(_) => FieldIndex::Int,
+            Field::Int64(_) => FieldIndex::Int64,
+            Field::Short(_) => FieldIndex::Short,
+            Field::Void(_) => FieldIndex::Void,
+            Field::Word(_) => FieldIndex::Word,
+            Field::Struct(_) => FieldIndex::Struct,
+            Field::List(_) => FieldIndex::List,
         }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct LabeledField {
+    pub label: Label,
+    pub field: Field,
+}
+
+impl LabeledField {
+    pub fn new(label: Label, field: Field) -> Self {
+        Self { label, field }
     }
 }

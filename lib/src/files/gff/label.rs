@@ -4,7 +4,7 @@ use crate::error::{Error, IntoError};
 
 const LABEL_SIZE: usize = 16;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Label(pub String);
 impl Label {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
