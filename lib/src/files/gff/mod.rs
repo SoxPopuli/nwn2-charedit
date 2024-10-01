@@ -1,4 +1,4 @@
-use super::{read_string, Offset};
+use super::{from_bytes_le, read_string, Offset};
 use crate::error::{Error, IntoError};
 
 use rust_utils::{byte_readers::FromBytes, collect_vec::CollectVecResult};
@@ -52,30 +52,28 @@ pub struct Header {
     pub list_indices_count: i32,
 }
 impl Header {
-    fn read<T: Read>(data: &mut T) -> Result<Self, Error> {
-        let from_bytes = |data: &mut T| i32::from_bytes_le(data).into_parse_error();
-
+    fn read(mut data: impl Read) -> Result<Self, Error> {
         Ok(Self {
-            file_type: read_string(data, 4)?,
-            file_version: read_string(data, 4)?,
+            file_type: read_string(&mut data, 4)?,
+            file_version: read_string(&mut data, 4)?,
 
-            struct_offset: Offset(from_bytes(data)?),
-            struct_count: from_bytes(data)?,
+            struct_offset: Offset(from_bytes_le(&mut data)?),
+            struct_count: from_bytes_le(&mut data)?,
 
-            field_offset: Offset(from_bytes(data)?),
-            field_count: from_bytes(data)?,
+            field_offset: Offset(from_bytes_le(&mut data)?),
+            field_count: from_bytes_le(&mut data)?,
 
-            label_offset: Offset(from_bytes(data)?),
-            label_count: from_bytes(data)?,
+            label_offset: Offset(from_bytes_le(&mut data)?),
+            label_count: from_bytes_le(&mut data)?,
 
-            field_data_offset: Offset(from_bytes(data)?),
-            field_data_count: from_bytes(data)?,
+            field_data_offset: Offset(from_bytes_le(&mut data)?),
+            field_data_count: from_bytes_le(&mut data)?,
 
-            field_indices_offset: Offset(from_bytes(data)?),
-            field_indices_count: from_bytes(data)?,
+            field_indices_offset: Offset(from_bytes_le(&mut data)?),
+            field_indices_count: from_bytes_le(&mut data)?,
 
-            list_indices_offset: Offset(from_bytes(data)?),
-            list_indices_count: from_bytes(data)?,
+            list_indices_offset: Offset(from_bytes_le(&mut data)?),
+            list_indices_count: from_bytes_le(&mut data)?,
         })
     }
 }

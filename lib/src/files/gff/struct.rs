@@ -1,5 +1,5 @@
 use crate::error::{Error, IntoError};
-use crate::files::gff::{Field, Gff};
+use crate::files::gff::Field;
 use rust_utils::byte_readers::from_bytes_le;
 use std::io::Read;
 

@@ -64,8 +64,10 @@ fn get_name_value_pairs(category_node: Node) -> Vec<(String, String)> {
                 }
             }
 
-            let name = name.expect(&format!("Missing name in: {}", node.tag_name().name()));
-            let value = value.expect(&format!("Missing value in: {}", node.tag_name().name()));
+            let name =
+                name.unwrap_or_else(|| panic!("Missing name in: {}", node.tag_name().name()));
+            let value =
+                value.unwrap_or_else(|| panic!("Missing value in: {}", node.tag_name().name()));
 
             (name.into(), value.into())
         })

@@ -1,5 +1,7 @@
 pub mod gff;
-mod res_ref;
+pub mod offset;
+pub use offset::Offset;
+pub mod res_ref;
 pub mod tlk;
 pub mod two_da;
 
@@ -8,7 +10,7 @@ use crate::{
     int_enum,
 };
 use rust_utils::byte_readers::FromBytes;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 
 int_enum! { Language,
     English, 0,
@@ -36,23 +38,6 @@ int_enum! { Gender,
 impl Default for Gender {
     fn default() -> Self {
         Self::Masculine
-    }
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct Offset(pub i32);
-impl Offset {
-    pub fn seek_to<T>(&self, read: &mut T) -> Result<u64, Error>
-    where
-        T: Seek,
-    {
-        read.seek(SeekFrom::Start(self.0 as u64)).into_parse_error()
-    }
-
-    pub fn seek_with_offet<T: Seek>(&self, read: &mut T, offset: u64) -> Result<u64, Error> {
-        let pos = (self.0 as u64) + offset;
-        read.seek(SeekFrom::Start(pos)).into_parse_error()
     }
 }
 

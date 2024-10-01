@@ -4,6 +4,9 @@ use std::num::{ParseFloatError, ParseIntError};
 pub enum Error {
     ParseError(String),
     WriteError(String),
+    InvalidStrRef {
+        value: u32,
+    },
     EnumError {
         enum_type: &'static str,
         msg: String,
