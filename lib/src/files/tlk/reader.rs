@@ -62,7 +62,11 @@ where
                 info.offset
                     .seek_with_offset(&mut self.data, self.string_entry_offset)?;
 
-                let str = read_str(&mut self.data, info.size as usize)?;
+                let str = if info.size == 0 {
+                    super::EMPTY_STRING.clone()
+                } else {
+                    read_str(&mut self.data, info.size as usize)?
+                };
 
                 e.insert(str.clone());
 
