@@ -53,7 +53,7 @@ use crate::{
 // | 15      | List          | yes**    |
 
 fn shrink_array<const BIG: usize, const SMALL: usize>(x: &[u8; BIG]) -> [u8; SMALL] {
-    assert!(BIG <= SMALL, "Target array is not smaller than source");
+    assert!(BIG >= SMALL, "Tried to shrink {x:?} to size {SMALL}");
 
     std::array::from_fn(|i| x[i])
 }
