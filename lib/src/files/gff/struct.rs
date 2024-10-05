@@ -62,6 +62,7 @@ impl StructData {
 
 #[derive(Debug, PartialEq)]
 pub struct Struct {
+    pub id: i32,
     pub fields: Vec<LabeledField>,
 }
 impl Struct {
@@ -84,6 +85,6 @@ impl Struct {
             })
             .collect_vec_result()?;
 
-        Ok(Self { fields })
+        Ok(Self { id: s.struct_type, fields })
     }
 }

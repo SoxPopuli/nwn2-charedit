@@ -168,7 +168,15 @@ mod tests {
 
         let tlk = Tlk::read(Cursor::new(include_bytes!("../../tests/files/dialog.TLK"))).unwrap();
 
-        let top_level = file.structs[0].resolve(&file, &tlk).unwrap();
-        println!("{top_level:#?}")
+        let structs = file.structs
+            .iter()
+            .map(|s| {
+                s.resolve(&file, &tlk)
+            })
+        .collect_vec_result();
+
+        for (i, s) in structs.into_iter().enumerate() {
+            println!("{i}: {s:#?}");
+        }
     }
 }

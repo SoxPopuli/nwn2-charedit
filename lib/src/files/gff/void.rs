@@ -5,10 +5,16 @@ use crate::{
     files::from_bytes_le,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct Void {
     pub data: Vec<u8>,
 }
+impl std::fmt::Debug for Void {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:02X?}", &self.data)
+    }
+}
+
 
 impl Void {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
