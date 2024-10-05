@@ -166,13 +166,9 @@ mod tests {
         let file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
         let file = GffData::read(file).unwrap();
 
-        let tlk = Tlk::read(
-            Cursor::new(
-                include_bytes!("../../tests/files/dialog.TLK")
-            )
-        ).unwrap();
+        let tlk = Tlk::read(Cursor::new(include_bytes!("../../tests/files/dialog.TLK"))).unwrap();
 
         let top_level = file.structs[0].resolve(&file, &tlk).unwrap();
-        panic!("{top_level:#?}")
+        println!("{top_level:#?}")
     }
 }

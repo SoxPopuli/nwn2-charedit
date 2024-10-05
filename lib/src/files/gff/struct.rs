@@ -28,14 +28,14 @@ impl StructData {
         })
     }
 
-    pub fn get_field<'a>(&self, fields: &'a [FieldData], index: i32) -> Option<&'a FieldData> {
+    pub fn get_field<'a>(&self, file: &'a GffData, index: i32) -> Option<&'a FieldData> {
         if index < 0 || index >= self.field_count {
             return None;
         }
 
         if self.field_count == 1 {
             // Index into field array
-            let field = &fields[self.data_or_data_offset as usize];
+            let field = &file.fields[self.data_or_data_offset as usize];
             Some(field)
         } else {
             // Byte offset into field indices
@@ -44,8 +44,9 @@ impl StructData {
                 "Data index not aligned on u32 boundary :("
             );
 
-            let index = self.data_or_data_offset / 4;
-            let field = &fields[index as usize];
+            let index = (self.data_or_data_offset / 4) + index;
+            let field_index = file.field_indices[index as usize];
+            let field = &file.fields[field_index as usize];
 
             Some(field)
         }
@@ -71,7 +72,7 @@ impl Struct {
         let fields = (0..s.field_count)
             .map(|i| {
                 let field = s
-                    .get_field(&gff.fields, i)
+                    .get_field(gff, i)
                     .ok_or_else(|| Error::ParseError(format!("Field index {i} not found")))?;
                 let label = field.get_label(&gff.labels);
                 let data = field.get_data(gff, tlk)?;
