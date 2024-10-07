@@ -6,7 +6,7 @@ use super::{
     exo_string::{ExoLocString, ExoString},
     label::Label,
     r#struct::Struct,
-    GffData, INDEX_SIZE,
+    FileBinaryData, GffData, INDEX_SIZE,
 };
 use crate::{
     error::{Error, IntoError},
@@ -57,6 +57,8 @@ fn shrink_array<const BIG: usize, const SMALL: usize>(x: &[u8; BIG]) -> [u8; SMA
 
     std::array::from_fn(|i| x[i])
 }
+
+pub(crate) const FIELD_DATA_SIZE: u32 = (size_of::<i32>() * 3) as u32;
 
 #[derive(Debug)]
 pub struct FieldData {
@@ -240,6 +242,21 @@ pub enum Field {
     List(Vec<Struct>),
 }
 
+macro_rules! expect_field {
+    ($fn_name: ident, $variant: ident, $ret: ty) => {
+        pub fn $fn_name(self) -> Result<$ret, Error> {
+            use Field::*;
+            match self {
+                $variant(x) => Ok(x),
+                x => Err(Error::EnumError {
+                    enum_type: "Field",
+                    msg: format!("Expected {} but found {:?}", stringify!($variant), x),
+                }),
+            }
+        }
+    };
+}
+
 impl Field {
     pub fn get_field_index(&self) -> FieldIndex {
         match self {
@@ -261,16 +278,100 @@ impl Field {
             Field::List(_) => FieldIndex::List,
         }
     }
+
+    expect_field!(expect_dword, DWord, u32);
+    expect_field!(expect_float, Float, f32);
+
+    pub(crate) fn write_data(
+        &self,
+        label_index: i32,
+        binary_data: &mut FileBinaryData,
+    ) -> Result<u32, Error> {
+        fn write_and_get_offset(
+            data: &mut Vec<u8>,
+            write_fn: impl FnOnce(&mut Vec<u8>) -> Result<(), Error>,
+        ) -> Result<[u8; 4], Error> {
+            let offset = data.len() as u32;
+            write_fn(data)?;
+            Ok(offset.to_le_bytes())
+        }
+
+        fn push_and_get_offset(data: &mut Vec<u8>, val: &[u8]) -> [u8; 4] {
+            let offset = data.len() as u32;
+            data.extend_from_slice(val);
+            offset.to_le_bytes()
+        }
+
+        let data_or_data_offset = match self {
+            Field::Byte(x) => (*x as u32).to_le_bytes(),
+            Field::CExoLocString(x) => {
+                write_and_get_offset(&mut binary_data.field_data, |w| x.write(w))?
+            }
+            Field::CExoString(x) => {
+                write_and_get_offset(&mut binary_data.field_data, |w| x.write(w))?
+            }
+            Field::Char(x) => (*x as u32).to_le_bytes(),
+            Field::CResRef(x) => write_and_get_offset(&mut binary_data.field_data, |w| x.write(w))?,
+            Field::Double(x) => push_and_get_offset(&mut binary_data.field_data, &x.to_le_bytes()),
+            Field::DWord(x) => x.to_le_bytes(),
+            Field::DWord64(x) => push_and_get_offset(&mut binary_data.field_data, &x.to_le_bytes()),
+            Field::Float(x) => x.to_le_bytes(),
+            Field::Int(x) => x.to_le_bytes(),
+            Field::Int64(x) => push_and_get_offset(&mut binary_data.field_data, &x.to_le_bytes()),
+            Field::Short(x) => (*x as u32).to_le_bytes(),
+            Field::Void(x) => push_and_get_offset(&mut binary_data.field_data, &x.data),
+            Field::Word(x) => (*x as u32).to_le_bytes(),
+            Field::Struct(s) => {
+                let index = s.write(binary_data)?;
+                index.to_le_bytes()
+            }
+            Field::List(structs) => {
+                let offset = binary_data.list_indices.len() as u32;
+
+                binary_data
+                    .list_indices
+                    .extend_from_slice(&(structs.len() as u32).to_le_bytes());
+
+                for s in structs {
+                    let index = s.write(binary_data)?;
+                    binary_data
+                        .list_indices
+                        .extend_from_slice(&index.to_le_bytes())
+                }
+
+                offset.to_le_bytes()
+            }
+        };
+
+        let offset = binary_data.fields.len() as u32;
+        binary_data
+            .fields
+            .extend_from_slice(&(self.get_field_index().as_u8() as u32).to_le_bytes());
+        binary_data
+            .fields
+            .extend_from_slice(&label_index.to_le_bytes());
+        binary_data.fields.extend_from_slice(&data_or_data_offset);
+
+        Ok(offset / FIELD_DATA_SIZE)
+    }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct LabeledField {
     pub label: Label,
     pub field: Field,
 }
-
 impl LabeledField {
     pub fn new(label: Label, field: Field) -> Self {
         Self { label, field }
+    }
+}
+impl std::fmt::Debug for LabeledField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            write!(f, "\"{}\": {:#?}", &self.label.as_str(), &self.field)
+        } else {
+            write!(f, "\"{}\": {:?}", &self.label.as_str(), &self.field)
+        }
     }
 }

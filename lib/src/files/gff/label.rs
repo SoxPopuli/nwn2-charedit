@@ -2,10 +2,15 @@ use std::io::{Read, Write};
 
 use crate::error::{Error, IntoError};
 
-const LABEL_SIZE: usize = 16;
+pub(crate) const LABEL_SIZE: usize = 16;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Label(pub String);
+impl std::fmt::Debug for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\"{}\"", self.as_str())
+    }
+}
 impl Label {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
         let mut buf = [0u8; LABEL_SIZE];

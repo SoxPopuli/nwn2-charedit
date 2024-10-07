@@ -6,7 +6,7 @@ use reader::{StringInfo, TlkReader};
 use rust_utils::collect_vec::CollectVecResult;
 use std::{
     cell::RefCell,
-    io::{Read, Seek},
+    io::{Cursor, Read, Seek},
     sync::{Arc, LazyLock},
 };
 
@@ -56,7 +56,7 @@ pub fn get_empty_string() -> Arc<str> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Tlk<R: Read + Seek> {
+pub struct Tlk<R: Read + Seek = Cursor<Vec<u8>>> {
     pub header: Header,
     pub reader: RefCell<TlkReader<R>>,
 }

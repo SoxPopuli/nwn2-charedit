@@ -5,7 +5,7 @@ use crate::{
     files::from_bytes_le,
 };
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash)]
 pub struct Void {
     pub data: Vec<u8>,
 }
@@ -14,7 +14,6 @@ impl std::fmt::Debug for Void {
         write!(f, "{:02X?}", &self.data)
     }
 }
-
 
 impl Void {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {

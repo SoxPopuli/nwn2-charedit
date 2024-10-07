@@ -10,7 +10,7 @@ use crate::{
     int_enum,
 };
 use rust_utils::byte_readers::FromBytes;
-use std::io::Read;
+use std::io::{Read, Write};
 
 int_enum! { Language,
     English, 0,
@@ -63,4 +63,8 @@ where
     T::Error: std::error::Error,
 {
     T::from_bytes_le(data).into_parse_error()
+}
+
+fn write_all<W: Write>(writer: &mut W, data: &[u8]) -> Result<(), Error> {
+    writer.write_all(data).into_write_error()
 }

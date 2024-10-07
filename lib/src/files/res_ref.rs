@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 
 use crate::error::{Error, IntoError};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ResRef(pub String);
 
 impl ResRef {
