@@ -68,10 +68,11 @@ impl StructData {
     }
 }
 
+/// *Warning*: duplicate labels possible?
 #[derive(Debug, PartialEq)]
 pub struct Struct {
     pub id: i32,
-    pub fields: HashMap<Label, Field>,
+    pub fields: Vec<(Label, Field)>,
 }
 impl Struct {
     pub fn new<R>(s: &StructData, gff: &GffData, tlk: &Tlk<R>) -> Result<Self, Error>
@@ -88,7 +89,7 @@ impl Struct {
 
                 Ok::<_, Error>((label.clone(), field_data))
             })
-            .collect::<Result<HashMap<_, _>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self {
             id: s.struct_type,
@@ -115,6 +116,12 @@ impl Struct {
             offset as i32
         } else {
             let base_offset = binary_data.field_indices.len();
+
+            assert!(
+                base_offset % 4 == 0,
+                "Data index {} not aligned on u32 boundary",
+                base_offset
+            );
 
             for (label, field) in self.fields.iter() {
                 let label_index = write_label(label, binary_data)?;

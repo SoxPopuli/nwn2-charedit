@@ -59,7 +59,7 @@ impl ExoLocString {
             .map(|_| ExoLocSubString::read(&mut data))
             .collect_vec_result()?;
 
-        assert_eq!(_size as u32, Self::get_total_size(&substrings));
+        assert_eq!(_size as u32, Self::get_total_size(&substrings), "Computed size does not match existing");
 
         Ok(Self {
             str_ref,
