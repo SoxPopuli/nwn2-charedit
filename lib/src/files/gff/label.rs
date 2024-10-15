@@ -1,11 +1,14 @@
-use std::io::{Read, Write};
-
 use crate::error::{Error, IntoError};
+use encoding_rs::WINDOWS_1252;
+use std::{
+    io::{Read, Write},
+    sync::Arc,
+};
 
 pub(crate) const LABEL_SIZE: usize = 16;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Label(pub String);
+pub struct Label(Arc<str>);
 impl std::fmt::Debug for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\"{}\"", self.as_str())
@@ -30,19 +33,28 @@ impl Label {
             None => &data,
         };
 
-        let s = std::str::from_utf8(slice).into_parse_error()?;
-        Ok(Label(s.to_string()))
+        let boxed = WINDOWS_1252.decode(slice).0.into();
+        Ok(Label(boxed))
     }
 
     pub fn to_array(&self) -> [u8; LABEL_SIZE] {
         let mut buf = [0u8; LABEL_SIZE];
         let strlen = self.0.len();
 
-        buf[..strlen].copy_from_slice(self.0.as_bytes());
+        let encoded = WINDOWS_1252.encode(&self.0);
+
+        buf[..strlen].copy_from_slice(&encoded.0);
         buf
     }
 
     pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for Label {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }

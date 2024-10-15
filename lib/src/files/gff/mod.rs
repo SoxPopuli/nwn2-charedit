@@ -1,68 +1,76 @@
 // Note to self: type names ending Data usually means data as read from the file,
 // i.e. before being resolved into something more useable
 
-use super::{from_bytes_le, read_string, Offset};
+use super::{from_bytes_le, Offset};
 use crate::{
     error::{Error, IntoError},
     files::{tlk::Tlk, write_all},
 };
 
-use rust_utils::{byte_readers::FromBytes, collect_vec::CollectVecResult};
 use std::io::{Read, Seek, Write};
 
+pub mod bin;
 pub mod exo_string;
 pub mod field;
 pub mod label;
 pub mod r#struct;
 pub mod void;
-use field::{FieldData, FIELD_DATA_SIZE};
-use label::{Label, LABEL_SIZE};
-use r#struct::{Struct, StructData, STRUCT_DATA_SIZE};
+use r#struct::Struct;
 
-const INDEX_SIZE: i32 = size_of::<i32>() as i32;
-
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Header {
     /// 4-char file type string
-    pub file_type: String,
+    pub file_type: Box<str>,
     /// 4-char GFF Version
-    pub file_version: String,
+    pub file_version: Box<str>,
 
     /// Offset of Struct array as bytes from the beginning of the file
     pub struct_offset: Offset,
     /// Number of elements in Struct array
-    pub struct_count: i32,
+    pub struct_count: u32,
 
     /// Offset of Field array as bytes from the beginning of the file
     pub field_offset: Offset,
     /// Number of elements in Field array
-    pub field_count: i32,
+    pub field_count: u32,
 
     /// Offset of Label array as bytes from the beginning of the file
     pub label_offset: Offset,
     /// Number of elements in Label array
-    pub label_count: i32,
+    pub label_count: u32,
 
     /// Offset of Field Data as bytes from the beginning of the file
     pub field_data_offset: Offset,
     /// Number of bytes in Field Data block
-    pub field_data_count: i32,
+    pub field_data_count: u32,
 
     /// Offset of Field Indices array as bytes from the beginning of the file
     pub field_indices_offset: Offset,
     /// Number of bytes in Field Indices array
-    pub field_indices_count: i32,
+    pub field_indices_count: u32,
 
     /// Offset of List Indices array as bytes from the beginning of the file
     pub list_indices_offset: Offset,
     /// Number of bytes in List Indices array
-    pub list_indices_count: i32,
+    pub list_indices_count: u32,
 }
 impl Header {
     fn read(mut data: impl Read) -> Result<Self, Error> {
+        fn read_string(mut data: impl Read) -> Result<Box<str>, Error> {
+            let mut buf = [0u8; 4];
+            data.read_exact(&mut buf).into_parse_error()?;
+
+            let s = encoding_rs::WINDOWS_1252
+                .decode_without_bom_handling(&buf)
+                .0
+                .into();
+
+            Ok(s)
+        }
+
         Ok(Self {
-            file_type: read_string(&mut data, 4)?,
-            file_version: read_string(&mut data, 4)?,
+            file_type: read_string(&mut data)?,
+            file_version: read_string(&mut data)?,
 
             struct_offset: Offset(from_bytes_le(&mut data)?),
             struct_count: from_bytes_le(&mut data)?,
@@ -113,124 +121,23 @@ impl Header {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct GffData {
-    pub header: Header,
-    pub structs: Vec<StructData>,
-    pub fields: Vec<FieldData>,
-    pub labels: Vec<Label>,
-    pub field_data: Vec<u8>,
-    pub field_indices: Vec<i32>,
-    pub list_indices: Vec<i32>,
-}
-impl GffData {
-    pub fn read(mut data: impl Read + Seek) -> Result<Self, Error> {
-        let header = Header::read(&mut data)?;
-
-        header.struct_offset.seek_to(&mut data)?;
-
-        let structs = (0..header.struct_count)
-            .map(|_| StructData::read(&mut data))
-            .collect_vec_result()?;
-
-        header.field_offset.seek_to(&mut data)?;
-
-        let fields = (0..header.field_count)
-            .map(|_| FieldData::read(&mut data))
-            .collect_vec_result()?;
-
-        header.label_offset.seek_to(&mut data)?;
-
-        let labels = (0..header.label_count)
-            .map(|_| Label::read(&mut data))
-            .collect_vec_result()?;
-
-        header.field_data_offset.seek_to(&mut data)?;
-
-        let field_data = {
-            let mut buf = vec![0u8; header.field_data_count as usize];
-            data.read_exact(&mut buf).into_parse_error()?;
-            buf
-        };
-
-        header.field_indices_offset.seek_to(&mut data)?;
-
-        let field_indices = {
-            const INDEX_SIZE: i32 = size_of::<i32>() as i32;
-            (0..header.field_indices_count / INDEX_SIZE)
-                .map(|_| i32::from_bytes_le(&mut data))
-                .collect_vec_result()
-                .into_parse_error()
-        }?;
-
-        header.list_indices_offset.seek_to(&mut data)?;
-
-        let list_indices = {
-            const INDEX_SIZE: i32 = size_of::<i32>() as i32;
-            (0..header.list_indices_count / INDEX_SIZE)
-                .map(|_| i32::from_bytes_le(&mut data))
-                .collect_vec_result()
-                .into_parse_error()
-        }?;
-
-        Ok(Self {
-            header,
-            structs,
-            fields,
-            labels,
-            field_data,
-            field_indices,
-            list_indices,
-        })
-    }
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct FileBinaryData {
-    structs: Vec<u8>,
-    fields: Vec<u8>,
-    labels: Vec<u8>,
-    field_data: Vec<u8>,
-    field_indices: Vec<u8>,
-    list_indices: Vec<u8>,
-}
-impl FileBinaryData {
-    fn write<W>(&self, writer: &mut W) -> Result<(), Error>
-    where
-        W: Write,
-    {
-        write_all(writer, &self.structs)?;
-        write_all(writer, &self.fields)?;
-        write_all(writer, &self.labels)?;
-        write_all(writer, &self.field_data)?;
-        write_all(writer, &self.field_indices)?;
-        write_all(writer, &self.list_indices)?;
-
-        Ok(())
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub struct Gff {
-    file_type: String,
-    file_version: String,
-    structs: Vec<Struct>,
+    file_type: Box<str>,
+    file_version: Box<str>,
+    root: Struct,
 }
 impl Gff {
-    pub fn read(gff_data: impl Read + Seek, tlk_data: impl Read + Seek) -> Result<Self, Error> {
-        let gff = GffData::read(gff_data)?;
-        let tlk = Tlk::read(tlk_data)?;
-
-        let structs = gff
-            .structs
-            .iter()
-            .map(|s| s.resolve(&gff, &tlk))
-            .collect_vec_result()?;
+    pub fn from_binary<R>(gff: &bin::Gff, tlk: &Tlk<R>) -> Result<Self, Error>
+    where
+        R: Read + Seek,
+    {
+        let root = gff.structs.first().expect("Missing root struct");
 
         Ok(Self {
-            file_type: gff.header.file_type,
-            file_version: gff.header.file_version,
-            structs,
+            file_type: gff.header.file_type.clone(),
+            file_version: gff.header.file_version.clone(),
+            root: Struct::new(root, gff, tlk)?,
         })
     }
 
@@ -241,59 +148,7 @@ impl Gff {
         // Store all the data in `vec`s then work out the offsets
         // when writing
 
-        let mut binary_data = FileBinaryData::default();
-
-        for s in self.structs.iter() {
-            s.write(&mut binary_data)?;
-        }
-
-        fn increment_offset(offset: &mut i32, val: i32) -> Offset {
-            (*offset) += val;
-            Offset(*offset as u32)
-        }
-
-        let mut offset = 8;
-        let struct_offset = increment_offset(&mut offset, 0);
-        let struct_count = (binary_data.structs.len() as u32 / STRUCT_DATA_SIZE) as i32;
-
-        let field_offset = increment_offset(&mut offset, binary_data.structs.len() as i32);
-        let field_count = (binary_data.fields.len() as u32 / FIELD_DATA_SIZE) as i32;
-
-        let label_offset = increment_offset(&mut offset, binary_data.fields.len() as i32);
-        let label_count = (binary_data.labels.len() / LABEL_SIZE) as i32;
-
-        let field_data_offset = increment_offset(&mut offset, binary_data.labels.len() as i32);
-        let field_data_count = binary_data.field_data.len() as i32;
-
-        let field_indices_offset =
-            increment_offset(&mut offset, binary_data.field_data.len() as i32);
-        let field_indices_count = (binary_data.field_indices.len() / size_of::<i32>()) as i32;
-
-        let list_indices_offset =
-            increment_offset(&mut offset, binary_data.field_indices.len() as i32);
-        let list_indices_count = (binary_data.list_indices.len() / size_of::<i32>()) as i32;
-
-        let header = Header {
-            file_type: file_type.to_string(),
-            file_version: file_version.to_string(),
-            struct_offset,
-            struct_count,
-            field_offset,
-            field_count,
-            label_offset,
-            label_count,
-            field_data_offset,
-            field_data_count,
-            field_indices_offset,
-            field_indices_count,
-            list_indices_offset,
-            list_indices_count,
-        };
-
-        header.write(writer)?;
-        binary_data.write(writer)?;
-
-        Ok(())
+        todo!()
     }
 }
 
@@ -305,8 +160,8 @@ mod tests {
     #[test]
     fn header_write_test() {
         let header = Header {
-            file_type: "IFO ".to_string(),
-            file_version: "V3.2".to_string(),
+            file_type: "IFO ".into(),
+            file_version: "V3.2".into(),
             struct_offset: Offset(1),
             struct_count: 2,
             field_offset: Offset(3),
@@ -330,24 +185,35 @@ mod tests {
         assert_eq!(header, header_2);
     }
 
+    fn read_tlk_and_gff<A, B>(gff_file: A, tlk_file: B) -> (Tlk<B>, Gff)
+    where
+        A: Read + Seek,
+        B: Read + Seek,
+    {
+        let tlk = Tlk::read(tlk_file).unwrap();
+        let gff = bin::Gff::read(gff_file).unwrap();
+
+        let gff = Gff::from_binary(&gff, &tlk).unwrap();
+
+        (tlk, gff)
+    }
+
     #[test]
     fn read_test() {
-        let mut gff = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
-        let mut tlk = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
+        let gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
+        let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
 
-        let gff = Gff::read(&mut gff, &mut tlk).unwrap();
+        let (_, gff) = read_tlk_and_gff(gff_file, tlk_file);
 
-        for (i, s) in gff.structs.into_iter().enumerate() {
-            println!("{i}: {s:#?}");
-        }
+        println!("{:#?}", gff.root);
     }
 
     #[test]
     fn write_test() {
-        let mut gff = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
+        let gff = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
         let mut tlk = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
 
-        let gff = Gff::read(&mut gff, &mut tlk).unwrap();
+        let (_, gff) = read_tlk_and_gff(gff, &mut tlk);
         tlk.rewind().unwrap();
 
         let mut buf = Cursor::new(vec![]);
@@ -355,7 +221,7 @@ mod tests {
             .unwrap();
         buf.rewind().unwrap();
 
-        let gff_2 = Gff::read(&mut buf, &mut tlk).unwrap();
+        let (_, gff_2) = read_tlk_and_gff(buf, tlk);
 
         assert_eq!(gff, gff_2)
     }

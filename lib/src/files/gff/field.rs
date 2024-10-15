@@ -1,18 +1,13 @@
-use std::io::{Read, Seek};
-
-use rust_utils::{byte_readers::from_bytes_le, collect_vec::CollectVecResult, pipe::Pipe};
-
+use crate::error::Error;
 use super::{
     exo_string::{ExoLocString, ExoString},
     label::Label,
     r#struct::Struct,
-    FileBinaryData, GffData, INDEX_SIZE,
+    bin::FieldType,
 };
-use crate::{
-    error::{Error, IntoError},
-    files::{gff::void::Void, res_ref::ResRef, tlk::Tlk},
-    int_enum,
-};
+use crate::
+    files::{gff::void::Void, res_ref::ResRef}
+;
 
 // | Field Type    | Size (in bytes) | Description                                                                                                                                                                                                            |
 // | ------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -52,176 +47,6 @@ use crate::{
 // | 14      | Struct        | yes*     |
 // | 15      | List          | yes**    |
 
-fn shrink_array<const BIG: usize, const SMALL: usize>(x: &[u8; BIG]) -> [u8; SMALL] {
-    assert!(BIG >= SMALL, "Tried to shrink {x:?} to size {SMALL}");
-
-    std::array::from_fn(|i| x[i])
-}
-
-pub(crate) const FIELD_DATA_SIZE: u32 = (size_of::<i32>() * 3) as u32;
-
-#[derive(Debug)]
-pub struct FieldData {
-    pub field_type: FieldIndex,
-    pub label_index: i32,
-    pub data_or_data_offset: i32,
-}
-impl FieldData {
-    pub fn read(mut data: impl Read) -> Result<Self, Error> {
-        let field_type = from_bytes_le::<i32>(&mut data)
-            .into_parse_error()
-            .and_then(|x| (x as u8).try_into())?;
-
-        Ok(Self {
-            field_type,
-            label_index: from_bytes_le(&mut data).into_parse_error()?,
-            data_or_data_offset: from_bytes_le(&mut data).into_parse_error()?,
-        })
-    }
-
-    pub fn get_label<'a>(&self, labels: &'a [Label]) -> &'a Label {
-        &labels[self.label_index as usize]
-    }
-
-    fn get_field_data_offset<'a>(&'a self, file: &'a GffData) -> &'a [u8] {
-        let offset = self.data_or_data_offset as usize;
-        &file.field_data[offset..]
-    }
-
-    pub fn get_data<R>(&self, file: &GffData, tlk: &Tlk<R>) -> Result<Field, Error>
-    where
-        R: Read + Seek,
-    {
-        macro_rules! read_smaller {
-            ($t: ty) => {{
-                let bytes = self.data_or_data_offset.to_le_bytes();
-                let data = <$t>::from_le_bytes(shrink_array(&bytes));
-
-                data
-            }};
-        }
-
-        macro_rules! read_complex {
-            ($t: ty, $data_source: expr) => {{
-                const DATA_SIZE: usize = size_of::<$t>();
-
-                let index = self.data_or_data_offset as usize;
-                let data = &$data_source[index..index + DATA_SIZE];
-
-                let mut buf = [0u8; DATA_SIZE];
-                buf.copy_from_slice(data);
-
-                <$t>::from_le_bytes(buf)
-            }};
-        }
-
-        match self.field_type {
-            FieldIndex::Byte => {
-                let bytes = self.data_or_data_offset.to_le_bytes();
-                Ok(Field::Byte(bytes[0]))
-            }
-            FieldIndex::Char => {
-                let bytes = self.data_or_data_offset.to_le_bytes();
-                let char = bytes[0] as char;
-                Ok(Field::Char(char))
-            }
-            FieldIndex::Word => Ok(Field::Word(read_smaller!(u16))),
-            FieldIndex::Short => Ok(Field::Short(read_smaller!(i16))),
-            FieldIndex::DWord => Ok(Field::DWord(self.data_or_data_offset as u32)),
-            FieldIndex::Int => Ok(Field::Int(self.data_or_data_offset)),
-            FieldIndex::DWord64 => Ok(Field::DWord64(read_complex!(u64, file.field_data))),
-            FieldIndex::Int64 => Ok(Field::Int64(read_complex!(i64, file.field_data))),
-            FieldIndex::Float => Ok(Field::Float(read_smaller!(f32))),
-            FieldIndex::Double => Ok(Field::Double(read_complex!(f64, file.field_data))),
-            FieldIndex::CExoString => {
-                let mut data = self.get_field_data_offset(file);
-
-                ExoString::read(&mut data)?.pipe(Field::CExoString).pipe(Ok)
-            }
-            FieldIndex::ResRef => {
-                let mut data = self.get_field_data_offset(file);
-
-                let res_ref = ResRef::read(&mut data)?;
-                Ok(Field::CResRef(res_ref))
-            }
-            FieldIndex::CExoLocString => {
-                let mut data = self.get_field_data_offset(file);
-
-                let s = ExoLocString::read(&mut data, tlk)?;
-
-                Ok(Field::CExoLocString(s))
-            }
-            FieldIndex::Void => {
-                let mut data = self.get_field_data_offset(file);
-
-                Ok(Field::Void(Void::read(&mut data)?))
-            }
-            FieldIndex::Struct => {
-                let index = self.data_or_data_offset as usize;
-                let s = file.structs[index].resolve(file, tlk)?;
-
-                Ok(Field::Struct(s))
-            }
-            FieldIndex::List => {
-                let index = (self.data_or_data_offset / INDEX_SIZE) as usize;
-                let struct_count = file.list_indices[index] as usize;
-
-                let start = index + 1;
-                let end = start + struct_count;
-
-                let structs = file.list_indices[start..end]
-                    .iter()
-                    .map(|i| file.structs[*i as usize].resolve(file, tlk))
-                    .collect_vec_result()?;
-
-                Ok(Field::List(structs))
-            }
-        }
-    }
-}
-
-int_enum! { FieldIndex,
-    Byte, 0,
-    Char, 1,
-    Word, 2,
-    Short, 3,
-    DWord, 4,
-    Int, 5,
-    DWord64, 6,
-    Int64, 7,
-    Float, 8,
-    Double, 9,
-    CExoString, 10,
-    ResRef, 11,
-    CExoLocString, 12,
-    Void, 13,
-    Struct, 14,
-    List, 15
-}
-impl FieldIndex {
-    // A type is complex if it can't be represented using only 4 bytes
-    pub fn is_complex(&self) -> bool {
-        match self {
-            FieldIndex::Byte
-            | FieldIndex::Char
-            | FieldIndex::Word
-            | FieldIndex::Short
-            | FieldIndex::DWord
-            | FieldIndex::Int
-            | FieldIndex::Float => false,
-            FieldIndex::DWord64
-            | FieldIndex::Int64
-            | FieldIndex::Double
-            | FieldIndex::CExoString
-            | FieldIndex::ResRef
-            | FieldIndex::CExoLocString
-            | FieldIndex::Void
-            | FieldIndex::Struct
-            | FieldIndex::List => true,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub enum Field {
     Byte(u8),
@@ -258,102 +83,32 @@ macro_rules! expect_field {
 }
 
 impl Field {
-    pub fn get_field_index(&self) -> FieldIndex {
+    pub fn get_field_index(&self) -> FieldType {
         match self {
-            Field::Byte(_) => FieldIndex::Byte,
-            Field::CExoLocString(_) => FieldIndex::CExoLocString,
-            Field::CExoString(_) => FieldIndex::CExoString,
-            Field::Char(_) => FieldIndex::Char,
-            Field::CResRef(_) => FieldIndex::ResRef,
-            Field::Double(_) => FieldIndex::Double,
-            Field::DWord(_) => FieldIndex::DWord,
-            Field::DWord64(_) => FieldIndex::DWord64,
-            Field::Float(_) => FieldIndex::Float,
-            Field::Int(_) => FieldIndex::Int,
-            Field::Int64(_) => FieldIndex::Int64,
-            Field::Short(_) => FieldIndex::Short,
-            Field::Void(_) => FieldIndex::Void,
-            Field::Word(_) => FieldIndex::Word,
-            Field::Struct(_) => FieldIndex::Struct,
-            Field::List(_) => FieldIndex::List,
+            Field::Byte(_) => FieldType::Byte,
+            Field::CExoLocString(_) => FieldType::CExoLocString,
+            Field::CExoString(_) => FieldType::CExoString,
+            Field::Char(_) => FieldType::Char,
+            Field::CResRef(_) => FieldType::ResRef,
+            Field::Double(_) => FieldType::Double,
+            Field::DWord(_) => FieldType::DWord,
+            Field::DWord64(_) => FieldType::DWord64,
+            Field::Float(_) => FieldType::Float,
+            Field::Int(_) => FieldType::Int,
+            Field::Int64(_) => FieldType::Int64,
+            Field::Short(_) => FieldType::Short,
+            Field::Void(_) => FieldType::Void,
+            Field::Word(_) => FieldType::Word,
+            Field::Struct(_) => FieldType::Struct,
+            Field::List(_) => FieldType::List,
         }
     }
 
     expect_field!(expect_dword, DWord, u32);
     expect_field!(expect_float, Float, f32);
 
-    pub(crate) fn write_data(
-        &self,
-        label_index: i32,
-        binary_data: &mut FileBinaryData,
-    ) -> Result<u32, Error> {
-        fn write_and_get_offset(
-            data: &mut Vec<u8>,
-            write_fn: impl FnOnce(&mut Vec<u8>) -> Result<(), Error>,
-        ) -> Result<[u8; 4], Error> {
-            let offset = data.len() as u32;
-            write_fn(data)?;
-            Ok(offset.to_le_bytes())
-        }
 
-        fn push_and_get_offset(data: &mut Vec<u8>, val: &[u8]) -> [u8; 4] {
-            let offset = data.len() as u32;
-            data.extend_from_slice(val);
-            offset.to_le_bytes()
-        }
 
-        let data_or_data_offset = match self {
-            Field::Byte(x) => (*x as u32).to_le_bytes(),
-            Field::CExoLocString(x) => {
-                write_and_get_offset(&mut binary_data.field_data, |w| x.write(w))?
-            }
-            Field::CExoString(x) => {
-                write_and_get_offset(&mut binary_data.field_data, |w| x.write(w))?
-            }
-            Field::Char(x) => (*x as u32).to_le_bytes(),
-            Field::CResRef(x) => write_and_get_offset(&mut binary_data.field_data, |w| x.write(w))?,
-            Field::Double(x) => push_and_get_offset(&mut binary_data.field_data, &x.to_le_bytes()),
-            Field::DWord(x) => x.to_le_bytes(),
-            Field::DWord64(x) => push_and_get_offset(&mut binary_data.field_data, &x.to_le_bytes()),
-            Field::Float(x) => x.to_le_bytes(),
-            Field::Int(x) => x.to_le_bytes(),
-            Field::Int64(x) => push_and_get_offset(&mut binary_data.field_data, &x.to_le_bytes()),
-            Field::Short(x) => (*x as u32).to_le_bytes(),
-            Field::Void(x) => push_and_get_offset(&mut binary_data.field_data, &x.data),
-            Field::Word(x) => (*x as u32).to_le_bytes(),
-            Field::Struct(s) => {
-                let index = s.write(binary_data)?;
-                index.to_le_bytes()
-            }
-            Field::List(structs) => {
-                let offset = binary_data.list_indices.len() as u32;
-
-                binary_data
-                    .list_indices
-                    .extend_from_slice(&(structs.len() as u32).to_le_bytes());
-
-                for s in structs {
-                    let index = s.write(binary_data)?;
-                    binary_data
-                        .list_indices
-                        .extend_from_slice(&index.to_le_bytes())
-                }
-
-                offset.to_le_bytes()
-            }
-        };
-
-        let offset = binary_data.fields.len() as u32;
-        binary_data
-            .fields
-            .extend_from_slice(&(self.get_field_index().as_u8() as u32).to_le_bytes());
-        binary_data
-            .fields
-            .extend_from_slice(&label_index.to_le_bytes());
-        binary_data.fields.extend_from_slice(&data_or_data_offset);
-
-        Ok(offset / FIELD_DATA_SIZE)
-    }
 }
 
 #[derive(PartialEq)]

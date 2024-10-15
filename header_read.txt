@@ -1,0 +1,41 @@
+# Read
+
+```
+{file_type:"IFO ", file_version:"V3.2", ...}
+  field_count: 6296
+  field_data_count: 8693
+  field_data_offset: {0:102728}
+  field_indices_count: 21264
+  field_indices_offset: {0:111421}
+  field_offset: {0:20936}
+  file_type: "IFO "
+  file_version: "V3.2"
+  label_count: 390
+  label_offset: {0:96488}
+  list_indices_count: 5264
+  list_indices_offset: {0:132685}
+  struct_count: 1740
+  struct_offset: {0:56}
+```
+
+---
+
+# Write
+
+```
+{file_type:"IFO ", file_version:"V3.2", ...}
+  field_count: 27168
+  field_data_count: 27988
+  field_data_offset: {0:860468}
+  field_indices_count: 22622
+  field_indices_offset: {0:888456}
+  field_offset: {0:99764}
+  file_type: "IFO "
+  file_version: "V3.2"
+  label_count: 27168
+  label_offset: {0:425780}
+  list_indices_count: 4422
+  list_indices_offset: {0:978944}
+  struct_count: 8313
+  struct_offset: {0:8}
+```
