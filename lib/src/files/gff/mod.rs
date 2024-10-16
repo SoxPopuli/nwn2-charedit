@@ -31,6 +31,10 @@ impl<const N: usize> FixedSizeString<N> {
         Ok(Self(x))
     }
 
+    pub const fn len() -> usize {
+        N
+    }
+
     pub fn to_str(&self) -> &str {
         unsafe { std::str::from_utf8_unchecked(&self.0) }
     }
@@ -138,8 +142,8 @@ impl Header {
     where
         W: std::io::Write,
     {
-        write_all(writer, &self.file_type.as_bytes()[..4])?;
-        write_all(writer, &self.file_version.as_bytes()[..4])?;
+        write_all(writer, &self.file_type.0)?;
+        write_all(writer, &self.file_version.0)?;
 
         write_all(writer, &self.struct_offset.0.to_le_bytes())?;
         write_all(writer, &self.struct_count.to_le_bytes())?;
@@ -187,8 +191,8 @@ impl Gff {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
     use pretty_assertions::assert_eq;
+    use std::io::Cursor;
 
     #[test]
     fn header_write_test() {
@@ -243,12 +247,12 @@ mod tests {
 
     #[test]
     fn write_test() {
-        let gff = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
-        let tlk = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
+        let mut gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
+        let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
 
-        let tlk = Tlk::read(tlk).unwrap();
+        let tlk = Tlk::read(tlk_file).unwrap();
 
-        let gff_bin = bin::Gff::read(gff).unwrap();
+        let gff_bin = bin::Gff::read(&mut gff_file).unwrap();
         let gff = Gff::from_binary(&gff_bin, &tlk).unwrap();
 
         let gff_2_bin = bin::Gff::from_data(&gff);
@@ -265,5 +269,11 @@ mod tests {
 
         let gff_2 = Gff::from_binary(&gff_2_bin, &tlk).unwrap();
         assert_eq!(gff, gff_2);
+
+        let mut buf = Cursor::new(vec![]);
+        gff_2_bin.write(&mut buf).unwrap();
+
+        gff_file.rewind().unwrap();
+        assert_eq!(buf.into_inner(), gff_file.into_inner());
     }
 }

@@ -13,15 +13,15 @@ use crate::{
         },
         res_ref::ResRef,
         tlk::Tlk,
-        Offset,
+        write_all, Offset,
     },
     int_enum,
 };
 use encoding_rs::WINDOWS_1252;
-use rust_utils::collect_vec::{CollectVec, CollectVecResult};
+use rust_utils::collect_vec::CollectVecResult;
 use std::{
     collections::HashMap,
-    io::{Read, Seek},
+    io::{Read, Seek, Write},
 };
 
 const fn u32_size_of<T>() -> u32 {
@@ -97,6 +97,34 @@ impl Gff {
             field_indices,
             list_indices,
         })
+    }
+
+    pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.header.write(writer)?;
+
+        for s in &self.structs {
+            s.write(writer)?;
+        }
+
+        for f in &self.fields {
+            f.write(writer)?;
+        }
+
+        for l in &self.labels {
+            l.write(writer)?;
+        }
+
+        write_all(writer, &self.field_data)?;
+
+        for fi in &self.field_indices {
+            write_all(writer, &fi.to_le_bytes())?;
+        }
+
+        for li in &self.list_indices {
+            write_all(writer, &li.to_le_bytes())?;
+        }
+
+        Ok(())
     }
 
     /// Stores *label* -> *label index* in `label_map`
@@ -304,6 +332,14 @@ impl Struct {
         })
     }
 
+    pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        write_all(writer, &self.id.to_le_bytes())?;
+        write_all(writer, &self.data_or_data_offset.to_le_bytes())?;
+        write_all(writer, &self.field_count.to_le_bytes())?;
+
+        Ok(())
+    }
+
     pub fn get_field<'a>(&self, file: &'a Gff, index: u32) -> Option<&'a Field> {
         if index >= self.field_count {
             return None;
@@ -360,6 +396,15 @@ impl Field {
             label_index,
             data_or_data_offset,
         })
+    }
+
+    fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        let index = self.id.as_u8() as u32;
+        write_all(writer, &index.to_le_bytes()).into_write_error()?;
+        write_all(writer, &self.label_index.to_le_bytes())?;
+        write_all(writer, &self.data_or_data_offset.to_le_bytes())?;
+
+        Ok(())
     }
 
     pub fn to_field<R>(&self, file: &Gff, tlk: &Tlk<R>) -> Result<super::field::Field, Error>

@@ -51,12 +51,6 @@ fn read_string<R: Read>(data: &mut R, len: usize) -> Result<String, Error> {
         .map(|_| to_str(&strbuf))
 }
 
-fn read_bytes<const N: usize, R: Read>(data: &mut R) -> Result<[u8; N], Error> {
-    let mut buf = [0u8; N];
-    data.read_exact(&mut buf).into_parse_error()?;
-    Ok(buf)
-}
-
 fn from_bytes_le<T>(data: impl Read) -> Result<T, Error>
 where
     T: FromBytes,
