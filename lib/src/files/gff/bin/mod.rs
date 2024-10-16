@@ -407,7 +407,7 @@ impl Field {
         Ok(())
     }
 
-    pub fn to_field<R>(&self, file: &Gff, tlk: &Tlk<R>) -> Result<super::field::Field, Error>
+    pub fn to_field<R>(&self, file: &Gff, tlk: Option<&Tlk<R>>) -> Result<super::field::Field, Error>
     where
         R: Read + Seek,
     {

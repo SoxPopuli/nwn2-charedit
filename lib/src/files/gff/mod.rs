@@ -174,7 +174,7 @@ pub struct Gff {
     root: Struct,
 }
 impl Gff {
-    pub fn from_binary<R>(gff: &bin::Gff, tlk: &Tlk<R>) -> Result<Self, Error>
+    pub fn from_binary<R>(gff: &bin::Gff, tlk: Option<&Tlk<R>>) -> Result<Self, Error>
     where
         R: Read + Seek,
     {
@@ -185,6 +185,28 @@ impl Gff {
             file_version: gff.header.file_version,
             root: Struct::new(root, gff, tlk)?,
         })
+    }
+
+    pub fn to_binary(&self) -> bin::Gff {
+        bin::Gff::from_data(self)
+    }
+
+    pub fn read<A, B>(data: A, tlk: Option<&Tlk<B>>) -> Result<Self, Error>
+    where
+        A: Read + Seek,
+        B: Read + Seek,
+    {
+        let bin = bin::Gff::read(data)?;
+        Self::from_binary(&bin, tlk)
+    }
+
+    pub fn read_without_tlk(data: impl Read + Seek) -> Result<Self, Error> {
+        use std::io::Cursor;
+        Self::read::<_, Cursor<Vec<u8>>>(data, None)
+    }
+
+    pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        self.to_binary().write(writer)
     }
 }
 
@@ -230,7 +252,7 @@ mod tests {
         let tlk = Tlk::read(tlk_file).unwrap();
         let gff = bin::Gff::read(gff_file).unwrap();
 
-        let gff = Gff::from_binary(&gff, &tlk).unwrap();
+        let gff = Gff::from_binary(&gff, Some(&tlk)).unwrap();
 
         (tlk, gff)
     }
@@ -246,6 +268,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires proprietary file"]
     fn write_test() {
         let mut gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
         let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
@@ -253,7 +276,9 @@ mod tests {
         let tlk = Tlk::read(tlk_file).unwrap();
 
         let gff_bin = bin::Gff::read(&mut gff_file).unwrap();
-        let gff = Gff::from_binary(&gff_bin, &tlk).unwrap();
+        let gff = Gff::from_binary(&gff_bin, Some(&tlk)).unwrap();
+
+        // panic!("{gff:#?}");
 
         let gff_2_bin = bin::Gff::from_data(&gff);
 
@@ -267,13 +292,53 @@ mod tests {
         // Takes too long to print with pretty_assertions
         ::core::assert_eq!(gff_bin, gff_2_bin);
 
-        let gff_2 = Gff::from_binary(&gff_2_bin, &tlk).unwrap();
+        let gff_2 = Gff::from_binary(&gff_2_bin, Some(&tlk)).unwrap();
         assert_eq!(gff, gff_2);
 
         let mut buf = Cursor::new(vec![]);
-        gff_2_bin.write(&mut buf).unwrap();
+        gff_2.write(&mut buf).unwrap();
 
         gff_file.rewind().unwrap();
         assert_eq!(buf.into_inner(), gff_file.into_inner());
+    }
+
+    #[test]
+    #[ignore = "requires proprietary file"]
+    fn find_test() {
+        use crate::files::{Gender, Language};
+        use exo_string::*;
+        let gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
+
+        let mut gff = Gff::read_without_tlk(gff_file).unwrap();
+
+        let expected = {
+            let exo_string = ExoLocString {
+                str_ref: 4294967295,
+                tlk_string: None,
+                substrings: vec![ExoLocSubString {
+                    data: "Cassie".into(),
+                    gender: Gender::Masculine,
+                    language: Language::English,
+                }],
+            };
+            field::Field::ExoLocString(exo_string)
+        };
+
+        {
+            let first_name = gff.root.find_bfs("FirstName").unwrap();
+            assert_eq!(first_name.field, expected);
+        }
+        {
+            let first_name = gff.root.find_bfs_mut("FirstName").unwrap();
+            assert_eq!(first_name.field, expected);
+        }
+        {
+            let first_name = gff.root.find_dfs("FirstName").unwrap();
+            assert_eq!(first_name.field, expected);
+        }
+        {
+            let first_name = gff.root.find_dfs_mut("FirstName").unwrap();
+            assert_eq!(first_name.field, expected);
+        }
     }
 }

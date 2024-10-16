@@ -46,12 +46,12 @@ impl Writeable for &ExoString {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ExoLocString {
-    str_ref: u32,
-    tlk_string: Option<Arc<str>>,
-    substrings: Vec<ExoLocSubString>,
+    pub str_ref: u32,
+    pub tlk_string: Option<Arc<str>>,
+    pub substrings: Vec<ExoLocSubString>,
 }
 impl ExoLocString {
-    pub fn read<R>(mut data: impl Read, tlk: &Tlk<R>) -> Result<Self, Error>
+    pub fn read<R>(mut data: impl Read, tlk: Option<&Tlk<R>>) -> Result<Self, Error>
     where
         R: Read + Seek,
     {
@@ -59,11 +59,21 @@ impl ExoLocString {
         let str_ref: u32 = from_bytes_le(&mut data)?;
         let str_count: u32 = from_bytes_le(&mut data)?;
 
-        let tlk_string = if str_ref == u32::MAX {
-            None
-        } else {
-            Some(tlk.get_from_str_ref(str_ref as u32)?.clone())
-        };
+        let tlk_string = tlk.and_then(|tlk | {
+            if str_ref == u32::MAX {
+                None
+            } else {
+                let s = tlk.get_from_str_ref(str_ref as u32);
+                Some(s)
+            }
+        });
+
+        let tlk_string =
+        match tlk_string {
+            Some(Ok(x)) => Ok(Some(x)),
+            None => Ok(None),
+            Some(Err(e)) => Err(e),
+        }?;
 
         let substrings = (0..str_count)
             .map(|_| ExoLocSubString::read(&mut data))
@@ -113,7 +123,7 @@ impl Writeable for &ExoLocString {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct ExoLocSubString {
+pub struct ExoLocSubString {
     pub gender: Gender,
     pub language: Language,
     pub data: String,
@@ -202,7 +212,7 @@ mod tests {
         buf.rewind().unwrap();
 
         let tlk: Tlk<Cursor<Vec<u8>>> = Tlk::default();
-        let str_2 = ExoLocString::read(&mut buf, &tlk).unwrap();
+        let str_2 = ExoLocString::read(&mut buf, Some(&tlk)).unwrap();
 
         assert_eq!(str, str_2)
     }
