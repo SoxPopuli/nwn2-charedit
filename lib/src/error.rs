@@ -69,7 +69,13 @@ where
     E: std::error::Error,
 {
     fn into_parse_error(self) -> Result<T, Error> {
-        self.map_err(|e| Error::ParseError(e.to_string()))
+        self.map_err(|e| {
+            let msg = format!("{:?}", e);
+            if option_env!("PARSE_PANIC").is_some() {
+                panic!("{}", msg);
+            }
+            Error::ParseError(msg)
+        })
     }
 
     fn into_write_error(self) -> Result<T, Error> {

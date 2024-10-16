@@ -1,13 +1,14 @@
-use rust_utils::collect_vec::CollectVecResult;
-
+use super::Writeable;
 use crate::{
     error::{Error, IntoError},
     files::{from_bytes_le, tlk::Tlk, write_all, Gender, Language},
 };
+use rust_utils::collect_vec::CollectVecResult;
 use std::{
     io::{Read, Seek, Write},
     sync::Arc,
 };
+use encoding_rs::WINDOWS_1252;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ExoString(pub String);
@@ -21,16 +22,25 @@ impl ExoString {
             buf
         };
 
-        let str = String::from_utf8(buf).into_parse_error()?;
+        let str = 
+            // String::from_utf8(buf).into_parse_error()?;
+            WINDOWS_1252.decode(&buf).0.to_string();
 
         Ok(Self(str))
     }
 
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         let sz = self.0.len() as u32;
-
         writer.write_all(&sz.to_le_bytes()).into_write_error()?;
-        writer.write_all(self.0.as_bytes()).into_write_error()
+
+        let data = WINDOWS_1252.encode(&self.0).0;
+
+        writer.write_all(&data).into_write_error()
+    }
+}
+impl Writeable for &ExoString {
+    fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        ExoString::write(self, writer)
     }
 }
 
@@ -59,7 +69,11 @@ impl ExoLocString {
             .map(|_| ExoLocSubString::read(&mut data))
             .collect_vec_result()?;
 
-        assert_eq!(_size as u32, Self::get_total_size(&substrings), "Computed size does not match existing");
+        assert_eq!(
+            _size as u32,
+            Self::get_total_size(&substrings),
+            "Computed size does not match existing"
+        );
 
         Ok(Self {
             str_ref,
@@ -79,7 +93,7 @@ impl ExoLocString {
     {
         let total_size = Self::get_total_size(&self.substrings);
 
-        write_all(writer, &total_size.to_le_bytes()).into_write_error()?;
+        write_all(writer, &total_size.to_le_bytes())?;
         write_all(writer, &self.str_ref.to_le_bytes())?;
 
         let string_count = self.substrings.len() as u32;
@@ -90,6 +104,11 @@ impl ExoLocString {
         }
 
         Ok(())
+    }
+}
+impl Writeable for &ExoLocString {
+    fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        ExoLocString::write(self, writer)
     }
 }
 
@@ -117,7 +136,7 @@ impl ExoLocSubString {
         let s = {
             let mut buf = vec![0u8; string_length as usize];
             data.read_exact(&mut buf).into_parse_error()?;
-            String::from_utf8_lossy(&buf).to_string()
+            WINDOWS_1252.decode(&buf).0.to_string()
         };
 
         Ok(Self {
@@ -142,7 +161,8 @@ impl ExoLocSubString {
         write_all(writer, &string_id.to_le_bytes())?;
         write_all(writer, &string_length.to_le_bytes())?;
 
-        write_all(writer, self.data.as_bytes())?;
+        let data = WINDOWS_1252.encode(&self.data).0;
+        write_all(writer, &data)?;
 
         Ok(())
     }

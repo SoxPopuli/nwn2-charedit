@@ -50,10 +50,10 @@ use crate::
 #[derive(Debug, PartialEq)]
 pub enum Field {
     Byte(u8),
-    CExoLocString(ExoLocString),
-    CExoString(ExoString),
+    ExoLocString(ExoLocString),
+    ExoString(ExoString),
     Char(char),
-    CResRef(ResRef),
+    ResRef(ResRef),
     Double(f64),
     DWord(u32),
     DWord64(u64),
@@ -83,13 +83,13 @@ macro_rules! expect_field {
 }
 
 impl Field {
-    pub fn get_field_index(&self) -> FieldType {
+    pub fn get_field_type(&self) -> FieldType {
         match self {
             Field::Byte(_) => FieldType::Byte,
-            Field::CExoLocString(_) => FieldType::CExoLocString,
-            Field::CExoString(_) => FieldType::CExoString,
+            Field::ExoLocString(_) => FieldType::ExoLocString,
+            Field::ExoString(_) => FieldType::ExoString,
             Field::Char(_) => FieldType::Char,
-            Field::CResRef(_) => FieldType::ResRef,
+            Field::ResRef(_) => FieldType::ResRef,
             Field::Double(_) => FieldType::Double,
             Field::DWord(_) => FieldType::DWord,
             Field::DWord64(_) => FieldType::DWord64,

@@ -1,17 +1,15 @@
-use rust_utils::byte_readers::from_bytes_le;
-use std::io::{Read, Write};
-
+use super::{from_bytes_le, gff::Writeable};
 use crate::error::{Error, IntoError};
+use std::io::{Read, Write};
+use encoding_rs::WINDOWS_1252;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ResRef(pub String);
 
 impl ResRef {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
-        let size = {
-            let size: u8 = from_bytes_le(&mut data).into_parse_error()?;
-            size.clamp(0, 16)
-        };
+        let size =
+                from_bytes_le::<u8>(&mut data)?;
 
         let data = {
             let mut buf = vec![0u8; size as usize];
@@ -19,7 +17,9 @@ impl ResRef {
             buf
         };
 
-        let s = String::from_utf8(data).into_parse_error()?;
+        let s = 
+            // String::from_utf8(data).into_parse_error()?;
+            WINDOWS_1252.decode(&data).0.to_string();
 
         Ok(Self(s))
     }
@@ -27,14 +27,20 @@ impl ResRef {
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         let sz = self.0.len() as u8;
 
-        writer.write_all(&[sz]).into_write_error()?;
+        writer.write_all(&sz.to_le_bytes()).into_write_error()?;
 
-        let bytes = self.0.as_bytes();
-        let len = bytes.len().clamp(0, 16);
+        let data = WINDOWS_1252.encode(&self.0).0;
+        let len = data.len();
+        let data = &data[..len];
 
-        writer.write_all(&bytes[..len]).into_write_error()?;
+        writer.write_all(data).into_write_error()?;
 
         Ok(())
+    }
+}
+impl Writeable for &ResRef {
+    fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        ResRef::write(self, writer)
     }
 }
 

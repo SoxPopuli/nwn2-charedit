@@ -1,7 +1,7 @@
 #![allow(private_bounds)]
 
 use crate::error::{Error, IntoError};
-use std::io::{Seek, SeekFrom};
+use std::{ io::{Seek, SeekFrom}, ops::Add };
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[repr(transparent)]
@@ -22,6 +22,12 @@ impl Offset {
         let offset = offset.to_offset().0;
         let pos = (self.0 as u64) + (offset as u64);
         read.seek(SeekFrom::Start(pos)).into_parse_error()
+    }
+}
+impl Add<u32> for Offset {
+    type Output = Offset;
+    fn add(self, rhs: u32) -> Self::Output {
+        Offset(self.0 + rhs)
     }
 }
 

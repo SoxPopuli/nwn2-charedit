@@ -17,12 +17,57 @@ pub mod r#struct;
 pub mod void;
 use r#struct::Struct;
 
+pub(crate) trait Writeable {
+    fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error>;
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+#[repr(transparent)]
+pub struct FixedSizeString<const N: usize>([u8; N]);
+impl<const N: usize> FixedSizeString<N> {
+    /// Errors if not utf-8
+    pub fn new(x: [u8; N]) -> Result<Self, Error> {
+        std::str::from_utf8(&x).into_parse_error()?;
+        Ok(Self(x))
+    }
+
+    pub fn to_str(&self) -> &str {
+        unsafe { std::str::from_utf8_unchecked(&self.0) }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+impl<const N: usize> Default for FixedSizeString<N> {
+    fn default() -> Self {
+        Self([0u8; N])
+    }
+}
+impl<const N: usize> AsRef<str> for FixedSizeString<N> {
+    fn as_ref(&self) -> &str {
+        self.to_str()
+    }
+}
+impl<const N: usize> std::fmt::Display for FixedSizeString<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+impl<const N: usize> std::fmt::Debug for FixedSizeString<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FixedSizeString")
+            .field(&self.to_str())
+            .finish()
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Header {
     /// 4-char file type string
-    pub file_type: Box<str>,
+    pub file_type: FixedSizeString<4>,
     /// 4-char GFF Version
-    pub file_version: Box<str>,
+    pub file_version: FixedSizeString<4>,
 
     /// Offset of Struct array as bytes from the beginning of the file
     pub struct_offset: Offset,
@@ -56,14 +101,11 @@ pub struct Header {
 }
 impl Header {
     fn read(mut data: impl Read) -> Result<Self, Error> {
-        fn read_string(mut data: impl Read) -> Result<Box<str>, Error> {
+        fn read_string(mut data: impl Read) -> Result<FixedSizeString<4>, Error> {
             let mut buf = [0u8; 4];
             data.read_exact(&mut buf).into_parse_error()?;
 
-            let s = encoding_rs::WINDOWS_1252
-                .decode_without_bom_handling(&buf)
-                .0
-                .into();
+            let s = FixedSizeString::new(buf)?;
 
             Ok(s)
         }
@@ -123,8 +165,8 @@ impl Header {
 
 #[derive(Debug, PartialEq)]
 pub struct Gff {
-    file_type: Box<str>,
-    file_version: Box<str>,
+    file_type: FixedSizeString<4>,
+    file_version: FixedSizeString<4>,
     root: Struct,
 }
 impl Gff {
@@ -135,20 +177,10 @@ impl Gff {
         let root = gff.structs.first().expect("Missing root struct");
 
         Ok(Self {
-            file_type: gff.header.file_type.clone(),
-            file_version: gff.header.file_version.clone(),
+            file_type: gff.header.file_type,
+            file_version: gff.header.file_version,
             root: Struct::new(root, gff, tlk)?,
         })
-    }
-
-    pub fn write<W>(&self, file_type: &str, file_version: &str, writer: &mut W) -> Result<(), Error>
-    where
-        W: Write,
-    {
-        // Store all the data in `vec`s then work out the offsets
-        // when writing
-
-        todo!()
     }
 }
 
@@ -156,12 +188,13 @@ impl Gff {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn header_write_test() {
         let header = Header {
-            file_type: "IFO ".into(),
-            file_version: "V3.2".into(),
+            file_type: FixedSizeString::new(*b"IFO ").unwrap(),
+            file_version: FixedSizeString::new(*b"V3.2").unwrap(),
             struct_offset: Offset(1),
             struct_count: 2,
             field_offset: Offset(3),
@@ -211,18 +244,26 @@ mod tests {
     #[test]
     fn write_test() {
         let gff = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
-        let mut tlk = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
+        let tlk = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
 
-        let (_, gff) = read_tlk_and_gff(gff, &mut tlk);
-        tlk.rewind().unwrap();
+        let tlk = Tlk::read(tlk).unwrap();
 
-        let mut buf = Cursor::new(vec![]);
-        gff.write(&gff.file_type, &gff.file_version, &mut buf)
-            .unwrap();
-        buf.rewind().unwrap();
+        let gff_bin = bin::Gff::read(gff).unwrap();
+        let gff = Gff::from_binary(&gff_bin, &tlk).unwrap();
 
-        let (_, gff_2) = read_tlk_and_gff(buf, tlk);
+        let gff_2_bin = bin::Gff::from_data(&gff);
 
-        assert_eq!(gff, gff_2)
+        assert_eq!(gff_bin.header, gff_2_bin.header);
+        assert_eq!(gff_bin.field_data, gff_2_bin.field_data);
+
+        assert_eq!(gff_bin.labels, gff_2_bin.labels);
+        assert_eq!(gff_bin.fields, gff_2_bin.fields);
+        assert_eq!(gff_bin.structs, gff_2_bin.structs);
+
+        // Takes too long to print with pretty_assertions
+        ::core::assert_eq!(gff_bin, gff_2_bin);
+
+        let gff_2 = Gff::from_binary(&gff_2_bin, &tlk).unwrap();
+        assert_eq!(gff, gff_2);
     }
 }

@@ -1,9 +1,11 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use crate::{
     error::{Error, IntoError},
     files::from_bytes_le,
 };
+
+use super::Writeable;
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct Void {
@@ -23,5 +25,20 @@ impl Void {
         data.read_exact(&mut buf).into_parse_error()?;
 
         Ok(Self { data: buf })
+    }
+
+    pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        let size = self.data.len() as u32;
+        writer.write_all(&size.to_le_bytes()).into_parse_error()?;
+
+        writer.write_all(&self.data).into_parse_error()?;
+
+        Ok(())
+    }
+}
+
+impl Writeable for &Void {
+    fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
+        Void::write(self, writer)
     }
 }

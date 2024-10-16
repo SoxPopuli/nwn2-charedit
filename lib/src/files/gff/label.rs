@@ -8,7 +8,7 @@ use std::{
 pub(crate) const LABEL_SIZE: usize = 16;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Label(Arc<str>);
+pub struct Label(pub(crate) Arc<str>);
 impl std::fmt::Debug for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\"{}\"", self.as_str())

@@ -1,4 +1,7 @@
-use super::{label::Label, Header};
+use super::{
+    label::{Label, LABEL_SIZE},
+    Header,
+};
 use crate::{
     error::{Error, IntoError},
     files::{
@@ -6,14 +9,26 @@ use crate::{
         gff::{
             exo_string::{ExoLocString, ExoString},
             void::Void,
+            Writeable,
         },
         res_ref::ResRef,
         tlk::Tlk,
+        Offset,
     },
     int_enum,
 };
-use rust_utils::collect_vec::CollectVecResult;
-use std::io::{Read, Seek};
+use encoding_rs::WINDOWS_1252;
+use rust_utils::collect_vec::{CollectVec, CollectVecResult};
+use std::{
+    collections::HashMap,
+    io::{Read, Seek},
+};
+
+const fn u32_size_of<T>() -> u32 {
+    size_of::<T>() as u32
+}
+
+const INDEX_SIZE: u32 = u32_size_of::<u32>();
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
 pub struct Gff {
@@ -56,7 +71,6 @@ impl Gff {
         };
 
         header.field_indices_offset.seek_to(&mut data)?;
-        const INDEX_SIZE: u32 = size_of::<u32>() as u32;
 
         let field_indices = {
             (0..header.field_indices_count / INDEX_SIZE)
@@ -84,6 +98,191 @@ impl Gff {
             list_indices,
         })
     }
+
+    /// Stores *label* -> *label index* in `label_map`
+    /// *Returns*: label index
+    fn register_label(
+        &mut self,
+        label_map: &mut HashMap<Label, u32>,
+        label: &super::label::Label,
+    ) -> u32 {
+        if let Some(index) = label_map.get(label) {
+            *index
+        } else {
+            let new_index = label_map.len() as u32;
+            label_map.insert(label.clone(), new_index);
+
+            new_index
+        }
+    }
+
+    /// *Returns*: data_or_data_offset
+    fn store_field(
+        &mut self,
+        label_map: &mut HashMap<Label, u32>,
+        labeled_field: &super::field::LabeledField,
+    ) -> u32 {
+        fn write_to_data(item: impl Writeable, data: &mut Vec<u8>) -> u32 {
+            let offset = data.len();
+            item.write(data).expect("Failed to write to data");
+            offset as u32
+        }
+
+        macro_rules! write_primitive {
+            ($val: expr) => {{
+                let offset = self.field_data.len();
+                let bytes = $val.to_le_bytes();
+                self.field_data.extend_from_slice(&bytes);
+                offset as u32
+            }};
+        }
+
+        let label_index = self.register_label(label_map, &labeled_field.label);
+        let f = Field {
+            id: labeled_field.field.get_field_type(),
+            label_index,
+            data_or_data_offset: 0,
+        };
+
+        let field_index = self.fields.len();
+        self.fields.push(f);
+
+        use super::field::Field::*;
+        let offset = match &labeled_field.field {
+            Byte(b) => *b as u32,
+            ExoLocString(s) => write_to_data(s, &mut self.field_data),
+            ExoString(s) => write_to_data(s, &mut self.field_data),
+            Char(c) => {
+                let str = c.to_string();
+                let encoded = WINDOWS_1252.encode(&str).0;
+
+                let mut buf = [0u8; 4];
+                buf[..encoded.len()].copy_from_slice(&encoded);
+
+                u32::from_le_bytes(buf)
+            }
+            ResRef(r) => write_to_data(r, &mut self.field_data),
+            Double(d) => write_primitive!(d),
+            DWord(w) => *w,
+            DWord64(w) => write_primitive!(w),
+            Float(f) => {
+                let bytes = f.to_le_bytes();
+                u32::from_le_bytes(bytes)
+            }
+            Int(i) => *i as u32,
+            Int64(i) => write_primitive!(i),
+            Short(s) => *s as u32,
+            Void(v) => write_to_data(v, &mut self.field_data),
+            Word(w) => *w as u32,
+            Struct(s) => self.store_struct(label_map, s),
+            List(l) => {
+                let offset = self.list_indices.len();
+                let struct_count = l.len() as u32;
+
+                self.list_indices.push(struct_count);
+                self.list_indices
+                    .resize(self.list_indices.len() + l.len(), 0);
+                for (i, s) in l.iter().enumerate() {
+                    let index = offset + i + 1;
+
+                    let struct_index = self.store_struct(label_map, s);
+                    self.list_indices[index] = struct_index;
+                }
+
+                offset as u32 * INDEX_SIZE
+            }
+        };
+
+        self.fields[field_index].data_or_data_offset = offset;
+        field_index as u32
+    }
+
+    /// *Returns*: struct index
+    fn store_struct(&mut self, label_map: &mut HashMap<Label, u32>, s: &super::Struct) -> u32 {
+        let field_count = s.fields.len() as u32;
+
+        let bin_struct = Struct {
+            id: s.id,
+            field_count,
+            data_or_data_offset: 0,
+        };
+
+        let struct_index = self.structs.len();
+        self.structs.push(bin_struct);
+
+        let offset = if field_count == 0 {
+            panic!("Struct has no fields?");
+        } else if s.fields.len() == 1 {
+            //Index into field array
+            let field = &s.fields[0];
+            self.store_field(label_map, field)
+        } else {
+            // Byte offset into field indices
+            let index_offset = self.field_indices.len();
+            self.field_indices
+                .resize(self.field_indices.len() + s.fields.len(), 0);
+
+            for (i, f) in s.fields.iter().enumerate() {
+                let index = self.store_field(label_map, f);
+                self.field_indices[index_offset + i] = index;
+            }
+
+            index_offset as u32 * INDEX_SIZE
+        };
+
+        self.structs[struct_index].data_or_data_offset = offset;
+
+        struct_index as u32
+    }
+
+    pub fn from_data(data: &super::Gff) -> Self {
+        let header = Header {
+            file_type: data.file_type,
+            file_version: data.file_version,
+            struct_offset: Offset(u32_size_of::<Header>()),
+            ..Default::default()
+        };
+
+        let mut this = Self {
+            header,
+            ..Default::default()
+        };
+
+        let mut label_map = HashMap::default();
+
+        this.store_struct(&mut label_map, &data.root);
+
+        let labels: Vec<Label> = {
+            let mut labels = vec![];
+            labels.resize_with(label_map.len(), std::mem::MaybeUninit::uninit);
+
+            for (label, index) in label_map {
+                labels[index as usize].write(label);
+            }
+
+            unsafe { std::mem::transmute(labels) }
+        };
+
+        this.labels = labels;
+
+        let header = &mut this.header;
+
+        header.field_count = this.fields.len() as u32;
+        header.label_count = this.labels.len() as u32;
+        header.struct_count = this.structs.len() as u32;
+        header.field_data_count = this.field_data.len() as u32;
+        header.list_indices_count = this.list_indices.len() as u32 * INDEX_SIZE;
+        header.field_indices_count = this.field_indices.len() as u32 * INDEX_SIZE;
+
+        header.field_offset =
+            header.struct_offset + (header.struct_count * u32_size_of::<Struct>());
+        header.label_offset = header.field_offset + (header.field_count * FIELD_SIZE);
+        header.field_data_offset = header.label_offset + (header.label_count * LABEL_SIZE as u32);
+        header.field_indices_offset = header.field_data_offset + header.field_data_count;
+        header.list_indices_offset = header.field_indices_offset + header.field_indices_count;
+
+        this
+    }
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -110,7 +309,9 @@ impl Struct {
             return None;
         }
 
-        if self.field_count == 1 {
+        if self.field_count == 0 {
+            panic!("Struct has no fields?")
+        } else if self.field_count == 1 {
             // Index into field array
             let field = &file.fields[self.data_or_data_offset as usize];
             Some(field)
@@ -136,6 +337,8 @@ fn shrink_array<const BIG: usize, const SMALL: usize>(x: &[u8; BIG]) -> [u8; SMA
 
     std::array::from_fn(|i| x[i])
 }
+
+const FIELD_SIZE: u32 = size_of::<u32>() as u32 * 3;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Field {
@@ -163,8 +366,6 @@ impl Field {
     where
         R: Read + Seek,
     {
-        const INDEX_SIZE: u32 = size_of::<u32>() as u32;
-
         macro_rules! read_smaller {
             ($t: ty) => {{
                 let bytes = self.data_or_data_offset.to_le_bytes();
@@ -201,7 +402,12 @@ impl Field {
             }
             FieldType::Char => {
                 let bytes = self.data_or_data_offset.to_le_bytes();
-                let char = bytes[0] as char;
+                let char = WINDOWS_1252
+                    .decode_without_bom_handling(&bytes)
+                    .0
+                    .chars()
+                    .nth(0);
+                let char = char.expect("No readable char found");
                 Ok(Field::Char(char))
             }
             FieldType::Word => Ok(Field::Word(read_smaller!(u16))),
@@ -212,24 +418,24 @@ impl Field {
             FieldType::Int64 => Ok(Field::Int64(read_complex!(i64, file.field_data))),
             FieldType::Float => Ok(Field::Float(read_smaller!(f32))),
             FieldType::Double => Ok(Field::Double(read_complex!(f64, file.field_data))),
-            FieldType::CExoString => {
+            FieldType::ExoString => {
                 let mut data = field_data_offset(file, self.data_or_data_offset);
 
                 let exo_string = ExoString::read(&mut data)?;
-                Ok(Field::CExoString(exo_string))
+                Ok(Field::ExoString(exo_string))
             }
             FieldType::ResRef => {
                 let mut data = field_data_offset(file, self.data_or_data_offset);
 
                 let res_ref = ResRef::read(&mut data)?;
-                Ok(Field::CResRef(res_ref))
+                Ok(Field::ResRef(res_ref))
             }
-            FieldType::CExoLocString => {
+            FieldType::ExoLocString => {
                 let mut data = field_data_offset(file, self.data_or_data_offset);
 
                 let s = ExoLocString::read(&mut data, tlk)?;
 
-                Ok(Field::CExoLocString(s))
+                Ok(Field::ExoLocString(s))
             }
             FieldType::Void => {
                 let mut data = field_data_offset(file, self.data_or_data_offset);
@@ -259,6 +465,7 @@ impl Field {
 
                 Ok(Field::List(structs))
             }
+            FieldType::Invalid => panic!("to_field called on invalid field type"),
         }
     }
 }
@@ -274,12 +481,13 @@ int_enum! { FieldType,
     Int64, 7,
     Float, 8,
     Double, 9,
-    CExoString, 10,
+    ExoString, 10,
     ResRef, 11,
-    CExoLocString, 12,
+    ExoLocString, 12,
     Void, 13,
     Struct, 14,
-    List, 15
+    List, 15,
+    Invalid, 255
 }
 impl FieldType {
     // A type is complex if it can't be represented using only 4 bytes
@@ -291,16 +499,97 @@ impl FieldType {
             | FieldType::Short
             | FieldType::DWord
             | FieldType::Int
+            | FieldType::Invalid
             | FieldType::Float => false,
             FieldType::DWord64
             | FieldType::Int64
             | FieldType::Double
-            | FieldType::CExoString
+            | FieldType::ExoString
             | FieldType::ResRef
-            | FieldType::CExoLocString
+            | FieldType::ExoLocString
             | FieldType::Void
             | FieldType::Struct
             | FieldType::List => true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FieldType, Gff};
+    use crate::files::gff::{
+        field::{Field, LabeledField},
+        label::Label,
+    };
+    use std::collections::HashMap;
+
+    #[test]
+    fn register_label_test() {
+        let mut file = Gff::default();
+        let mut label_map = HashMap::new();
+
+        let labels = [
+            Label("hello".into()),
+            Label("hello".into()),
+            Label("hello".into()),
+            Label("goodbye".into()),
+        ];
+
+        labels.iter().for_each(|l| {
+            file.register_label(&mut label_map, l);
+        });
+
+        assert_eq!(label_map.len(), 2);
+
+        assert_eq!(
+            label_map,
+            HashMap::from_iter([(Label("hello".into()), 0), (Label("goodbye".into()), 1),])
+        )
+    }
+
+    fn setup_store_test(field: Field) -> (Gff, HashMap<Label, u32>, LabeledField) {
+        let file = Gff::default();
+        let label_map = HashMap::new();
+
+        let labeled_field = LabeledField {
+            label: Label("hello".into()),
+            field,
+        };
+
+        (file, label_map, labeled_field)
+    }
+
+    #[test]
+    fn store_int_field_test() {
+        let (mut file, mut label_map, labeled_field) = setup_store_test(Field::Int(4));
+
+        file.store_field(&mut label_map, &labeled_field);
+
+        assert_eq!(label_map.len(), 1);
+        assert_eq!(
+            file.fields,
+            [super::Field {
+                id: FieldType::Int,
+                label_index: 0,
+                data_or_data_offset: 4
+            }]
+        );
+    }
+
+    #[test]
+    fn store_int64_field_test() {
+        let (mut file, mut label_map, labeled_field) = setup_store_test(Field::Int64(8));
+
+        file.store_field(&mut label_map, &labeled_field);
+        assert_eq!(label_map.len(), 1);
+        assert_eq!(
+            file.fields,
+            [super::Field {
+                id: FieldType::Int64,
+                label_index: 0,
+                data_or_data_offset: 0
+            }]
+        );
+        assert_eq!(file.field_data, 8i64.to_le_bytes())
     }
 }
