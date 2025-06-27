@@ -7,7 +7,7 @@ use crate::{
     files::{tlk::Tlk, write_all},
 };
 
-use std::io::{Read, Seek, Write};
+use std::io::{Cursor, Read, Seek, Write};
 
 pub mod bin;
 pub mod exo_string;
@@ -268,7 +268,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires proprietary file"]
     fn write_test() {
         let mut gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
         let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
@@ -277,8 +276,6 @@ mod tests {
 
         let gff_bin = bin::Gff::read(&mut gff_file).unwrap();
         let gff = Gff::from_binary(&gff_bin, Some(&tlk)).unwrap();
-
-        // panic!("{gff:#?}");
 
         let gff_2_bin = bin::Gff::from_data(&gff);
 
@@ -303,7 +300,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires proprietary file"]
     fn find_test() {
         use crate::files::{Gender, Language};
         use exo_string::*;

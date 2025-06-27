@@ -107,7 +107,6 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    #[ignore = "requires proprietary file"]
     fn read_test() {
         use std::time::SystemTime;
 
