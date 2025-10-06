@@ -6,7 +6,7 @@ use crate::{error::Error, files::tlk::Tlk};
 use std::io::{Read, Seek};
 
 /// *Warning*: duplicate labels possible?
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Struct {
     pub id: u32,
     pub fields: Vec<LabeledField>,
@@ -101,6 +101,37 @@ impl Struct {
         }
 
         None
+    }
+
+    pub fn bfs_iter(&self) -> impl Iterator<Item = &LabeledField> {
+        use super::field::Field;
+        use std::collections::VecDeque;
+
+        let mut stack = VecDeque::from_iter(self.fields.iter());
+
+        std::iter::from_fn(move || {
+            if let Some(x) = stack.pop_front() {
+                match &x.field {
+                    Field::Struct(s) => {
+                        for f in &s.fields {
+                            stack.push_back(f);
+                        }
+                    }
+                    Field::List(l) => {
+                        for s in l {
+                            for f in &s.fields {
+                                stack.push_back(f);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+
+                Some(x)
+            } else {
+                None
+            }
+        })
     }
 
     /// Searches fields for `name` using breadth first search

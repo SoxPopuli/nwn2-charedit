@@ -10,7 +10,7 @@ use std::{
 };
 use encoding_rs::WINDOWS_1252;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ExoString(pub String);
 impl ExoString {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
@@ -44,7 +44,7 @@ impl Writeable for &ExoString {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExoLocString {
     pub str_ref: u32,
     pub tlk_string: Option<Arc<str>>,
@@ -122,7 +122,7 @@ impl Writeable for &ExoLocString {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ExoLocSubString {
     pub gender: Gender,
     pub language: Language,

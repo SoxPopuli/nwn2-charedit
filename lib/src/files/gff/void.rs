@@ -7,7 +7,7 @@ use crate::{
 
 use super::Writeable;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Void {
     pub data: Vec<u8>,
 }

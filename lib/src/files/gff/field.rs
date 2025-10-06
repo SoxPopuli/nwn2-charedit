@@ -47,7 +47,7 @@ use crate::
 // | 14      | Struct        | yes*     |
 // | 15      | List          | yes**    |
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Field {
     Byte(u8),
     ExoLocString(ExoLocString),
@@ -111,7 +111,7 @@ impl Field {
 
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct LabeledField {
     pub label: Label,
     pub field: Field,

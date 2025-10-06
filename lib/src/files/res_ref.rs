@@ -3,7 +3,7 @@ use crate::error::{Error, IntoError};
 use std::io::{Read, Write};
 use encoding_rs::WINDOWS_1252;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ResRef(pub String);
 
 impl ResRef {

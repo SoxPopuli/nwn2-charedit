@@ -1,7 +1,7 @@
 // Note to self: type names ending Data usually means data as read from the file,
 // i.e. before being resolved into something more useable
 
-use super::{from_bytes_le, Offset};
+use super::{Offset, from_bytes_le};
 use crate::{
     error::{Error, IntoError},
     files::{tlk::Tlk, write_all},
@@ -169,9 +169,9 @@ impl Header {
 
 #[derive(Debug, PartialEq)]
 pub struct Gff {
-    file_type: FixedSizeString<4>,
-    file_version: FixedSizeString<4>,
-    root: Struct,
+    pub file_type: FixedSizeString<4>,
+    pub file_version: FixedSizeString<4>,
+    pub root: Struct,
 }
 impl Gff {
     pub fn from_binary<R>(gff: &bin::Gff, tlk: Option<&Tlk<R>>) -> Result<Self, Error>
@@ -207,6 +207,31 @@ impl Gff {
 
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.to_binary().write(writer)
+    }
+
+    /// Searches fields for `name` using breadth first search
+    pub fn find_dfs(&self, name: &str) -> Option<&field::LabeledField> {
+        self.root.find_bfs(name)
+    }
+
+    /// Searches fields for `name` using depth first search
+    pub fn find_dfs_mut(&mut self, name: &str) -> Option<&mut field::LabeledField> {
+        self.root.find_dfs_mut(name)
+    }
+
+    /// Searches fields for `name` using breadth first search
+    pub fn find_bfs(&self, name: &str) -> Option<&field::LabeledField> {
+        self.root.find_bfs(name)
+    }
+
+    /// Searches fields for `name` using breadth first search
+    pub fn find_bfs_mut(&mut self, name: &str) -> Option<&mut field::LabeledField> {
+        self.root.find_bfs_mut(name)
+    }
+
+    /// Search for `name` in direct children
+    pub fn find_direct(&self, name: &str) -> Option<&field::LabeledField> {
+        self.root.find_direct(name)
     }
 }
 
