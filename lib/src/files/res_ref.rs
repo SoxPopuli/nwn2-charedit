@@ -1,15 +1,14 @@
 use super::{from_bytes_le, gff::Writeable};
 use crate::error::{Error, IntoError};
-use std::io::{Read, Write};
 use encoding_rs::WINDOWS_1252;
+use std::io::{Read, Write};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ResRef(pub String);
 
 impl ResRef {
     pub fn read(mut data: impl Read) -> Result<Self, Error> {
-        let size =
-                from_bytes_le::<u8>(&mut data)?;
+        let size = from_bytes_le::<u8>(&mut data)?;
 
         let data = {
             let mut buf = vec![0u8; size as usize];
@@ -17,7 +16,7 @@ impl ResRef {
             buf
         };
 
-        let s = 
+        let s =
             // String::from_utf8(data).into_parse_error()?;
             WINDOWS_1252.decode(&data).0.to_string();
 

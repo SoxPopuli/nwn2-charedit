@@ -1,13 +1,12 @@
-use crate::error::Error;
 use super::{
+    bin::FieldType,
     exo_string::{ExoLocString, ExoString},
     label::Label,
     r#struct::Struct,
-    bin::FieldType,
 };
-use crate::
-    files::{gff::void::Void, res_ref::ResRef}
-;
+use crate::error::Error;
+use crate::files::{gff::void::Void, res_ref::ResRef};
+use paste::paste;
 
 // | Field Type    | Size (in bytes) | Description                                                                                                                                                                                                            |
 // | ------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -67,16 +66,48 @@ pub enum Field {
     List(Vec<Struct>),
 }
 
-macro_rules! expect_field {
-    ($fn_name: ident, $variant: ident, $ret: ty) => {
-        pub fn $fn_name(self) -> Result<$ret, Error> {
-            use Field::*;
-            match self {
-                $variant(x) => Ok(x),
-                x => Err(Error::EnumError {
-                    enum_type: "Field",
-                    msg: format!("Expected {} but found {:?}", stringify!($variant), x),
-                }),
+macro_rules! impl_expect_field {
+    (ref $variant: ident, $ret: ty) => {
+        paste! {
+            pub fn [< expect_ $variant:lower >](&self) -> Result<&$ret, Error> {
+                use Field::*;
+                match self {
+                    $variant(x) => Ok(x),
+                    x => Err(Error::EnumError {
+                        enum_type: "Field",
+                        msg: format!("Expected {} but found {:?}", stringify!($variant), x),
+                    }),
+                }
+            }
+
+            pub fn [< try_ $variant:lower >](&self) -> Option<&$ret> {
+                use Field::*;
+                match self {
+                    $variant(x) => Some(x),
+                    _ => None,
+                }
+            }
+        }
+    };
+    ($variant: ident, $ret: ty) => {
+        paste! {
+            pub fn [< expect_ $variant:lower >](&self) -> Result<$ret, Error> {
+                use Field::*;
+                match self {
+                    $variant(x) => Ok(*x),
+                    x => Err(Error::EnumError {
+                        enum_type: "Field",
+                        msg: format!("Expected {} but found {:?}", stringify!($variant), x),
+                    }),
+                }
+            }
+
+            pub fn [< try_ $variant:lower >](&self) -> Option<$ret> {
+                use Field::*;
+                match self {
+                    $variant(x) => Some(*x),
+                    _ => None,
+                }
             }
         }
     };
@@ -104,11 +135,22 @@ impl Field {
         }
     }
 
-    expect_field!(expect_dword, DWord, u32);
-    expect_field!(expect_float, Float, f32);
-
-
-
+    impl_expect_field!(Byte, u8);
+    impl_expect_field!(Char, char);
+    impl_expect_field!(Double, f64);
+    impl_expect_field!(DWord64, u64);
+    impl_expect_field!(DWord, u32);
+    impl_expect_field!(ref ExoLocString, ExoLocString);
+    impl_expect_field!(ref ExoString, ExoString);
+    impl_expect_field!(Float, f32);
+    impl_expect_field!(Int64, i64);
+    impl_expect_field!(Int, i32);
+    impl_expect_field!(ref List, Vec<Struct>);
+    impl_expect_field!(ref ResRef, ResRef);
+    impl_expect_field!(Short, i16);
+    impl_expect_field!(ref Struct, Struct);
+    impl_expect_field!(ref Void, Void);
+    impl_expect_field!(Word, u16);
 }
 
 #[derive(PartialEq, Clone)]

@@ -1,6 +1,6 @@
 pub mod reader;
 
-use super::{from_bytes_le, offset::ToOffset, read_string, Language, Offset};
+use super::{Language, Offset, from_bytes_le, offset::ToOffset, read_string};
 use crate::error::Error;
 use reader::{StringInfo, TlkReader};
 use rust_utils::collect_vec::CollectVecResult;

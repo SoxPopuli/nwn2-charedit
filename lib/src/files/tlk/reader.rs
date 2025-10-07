@@ -1,7 +1,7 @@
-use super::{from_bytes_le, Offset};
+use super::{Offset, from_bytes_le};
 use crate::error::{Error, IntoError};
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     io::{Read, Seek},
     sync::Arc,
 };

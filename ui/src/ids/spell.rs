@@ -311,7 +311,7 @@ crate::open_enum! {
         SummonFamiliar = 318,
         ElementalShape = 319,
         WildShape = 320,
-        PROTECTIONFROMALIGNMENT = 321,
+        ProtectionFromAlignment = 321,
         MagicCircleagainstAlignment = 322,
         AuraversusAlignment = 323,
         SHADESSummonShadow = 324,

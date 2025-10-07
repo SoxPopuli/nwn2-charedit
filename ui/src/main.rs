@@ -2,7 +2,7 @@ mod error;
 mod ids;
 
 use crate::error::Error;
-use nwn_lib::files::gff::Gff;
+use nwn_lib::files::gff::{Gff, field::Field};
 use std::{fs::File, io::Read, path::Path};
 
 fn open_file() -> Result<Gff, Error> {
@@ -38,7 +38,29 @@ fn open_file() -> Result<Gff, Error> {
 fn main() {
     let save = open_file().unwrap();
 
-    let x = save.root.bfs_iter()
-        .find(|x| x.label == "KnownList1");
-    println!("{x:#?}");
+    let x = save
+        .root
+        .bfs_iter()
+        .find(|x| x.has_label("KnownList1"))
+        .unwrap();
+
+    match &x.read().unwrap().field {
+        Field::List(s) => {
+            let spells = s
+                .iter()
+                .flat_map(|s| s.bfs_iter().filter(|x| x.read().unwrap().label == "Spell"))
+                .map(|spell| match &spell.read().unwrap().field {
+                    Field::Word(spell) => ids::spell::Spell(*spell),
+                    _ => panic!(),
+                });
+
+            for s in spells {
+                println!("{s:?}");
+            }
+        }
+
+        x => panic!("{x:?}"),
+    }
+
+    // println!("{x:#?}");
 }

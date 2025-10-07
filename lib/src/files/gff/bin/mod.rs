@@ -1,19 +1,19 @@
 use super::{
-    label::{Label, LABEL_SIZE},
     Header,
+    label::{LABEL_SIZE, Label},
 };
 use crate::{
     error::{Error, IntoError},
     files::{
-        from_bytes_le,
+        Offset, from_bytes_le,
         gff::{
+            Writeable,
             exo_string::{ExoLocString, ExoString},
             void::Void,
-            Writeable,
         },
         res_ref::ResRef,
         tlk::Tlk,
-        write_all, Offset,
+        write_all,
     },
     int_enum,
 };
@@ -242,7 +242,7 @@ impl Gff {
             panic!("Struct has no fields?");
         } else if s.fields.len() == 1 {
             //Index into field array
-            let field = &s.fields[0];
+            let field = &s.fields[0].read().unwrap();
             self.store_field(label_map, field)
         } else {
             // Byte offset into field indices
@@ -251,7 +251,8 @@ impl Gff {
                 .resize(self.field_indices.len() + s.fields.len(), 0);
 
             for (i, f) in s.fields.iter().enumerate() {
-                let index = self.store_field(label_map, f);
+                let field = f.read().unwrap();
+                let index = self.store_field(label_map, &field);
                 self.field_indices[index_offset + i] = index;
             }
 
@@ -354,7 +355,7 @@ impl Struct {
         } else {
             // Byte offset into field indices
             assert!(
-                self.data_or_data_offset % 4 == 0,
+                self.data_or_data_offset.is_multiple_of(4),
                 "Data index {} not aligned on u32 boundary :(",
                 self.data_or_data_offset
             );
@@ -407,7 +408,11 @@ impl Field {
         Ok(())
     }
 
-    pub fn to_field<R>(&self, file: &Gff, tlk: Option<&Tlk<R>>) -> Result<super::field::Field, Error>
+    pub fn to_field<R>(
+        &self,
+        file: &Gff,
+        tlk: Option<&Tlk<R>>,
+    ) -> Result<super::field::Field, Error>
     where
         R: Read + Seek,
     {

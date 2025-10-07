@@ -7,7 +7,7 @@ use crate::{
     files::{tlk::Tlk, write_all},
 };
 
-use std::io::{Cursor, Read, Seek, Write};
+use std::io::{Read, Seek, Write};
 
 pub mod bin;
 pub mod exo_string;
@@ -208,31 +208,6 @@ impl Gff {
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
         self.to_binary().write(writer)
     }
-
-    /// Searches fields for `name` using breadth first search
-    pub fn find_dfs(&self, name: &str) -> Option<&field::LabeledField> {
-        self.root.find_bfs(name)
-    }
-
-    /// Searches fields for `name` using depth first search
-    pub fn find_dfs_mut(&mut self, name: &str) -> Option<&mut field::LabeledField> {
-        self.root.find_dfs_mut(name)
-    }
-
-    /// Searches fields for `name` using breadth first search
-    pub fn find_bfs(&self, name: &str) -> Option<&field::LabeledField> {
-        self.root.find_bfs(name)
-    }
-
-    /// Searches fields for `name` using breadth first search
-    pub fn find_bfs_mut(&mut self, name: &str) -> Option<&mut field::LabeledField> {
-        self.root.find_bfs_mut(name)
-    }
-
-    /// Search for `name` in direct children
-    pub fn find_direct(&self, name: &str) -> Option<&field::LabeledField> {
-        self.root.find_direct(name)
-    }
 }
 
 #[cfg(test)]
@@ -330,7 +305,7 @@ mod tests {
         use exo_string::*;
         let gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
 
-        let mut gff = Gff::read_without_tlk(gff_file).unwrap();
+        let gff = Gff::read_without_tlk(gff_file).unwrap();
 
         let expected = {
             let exo_string = ExoLocString {
@@ -346,20 +321,30 @@ mod tests {
         };
 
         {
-            let first_name = gff.root.find_bfs("FirstName").unwrap();
-            assert_eq!(first_name.field, expected);
+            let first_name = gff
+                .root
+                .bfs_iter()
+                .find(|x| x.has_label("FirstName"))
+                .and_then(|x| match x.read() {
+                    Ok(lock) => Some(lock.field.clone()),
+                    _ => None,
+                })
+                .unwrap();
+
+            assert_eq!(first_name, expected);
         }
         {
-            let first_name = gff.root.find_bfs_mut("FirstName").unwrap();
-            assert_eq!(first_name.field, expected);
-        }
-        {
-            let first_name = gff.root.find_dfs("FirstName").unwrap();
-            assert_eq!(first_name.field, expected);
-        }
-        {
-            let first_name = gff.root.find_dfs_mut("FirstName").unwrap();
-            assert_eq!(first_name.field, expected);
+            let first_name = gff
+                .root
+                .dfs_iter()
+                .find(|x| x.has_label("FirstName"))
+                .and_then(|x| match x.read() {
+                    Ok(lock) => Some(lock.field.clone()),
+                    _ => None,
+                })
+                .unwrap();
+
+            assert_eq!(first_name, expected);
         }
     }
 }

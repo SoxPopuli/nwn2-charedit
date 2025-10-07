@@ -1,3 +1,4 @@
+pub mod class;
 pub mod spell;
 
 #[macro_export]

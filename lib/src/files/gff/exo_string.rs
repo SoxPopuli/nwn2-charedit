@@ -1,14 +1,14 @@
 use super::Writeable;
 use crate::{
     error::{Error, IntoError},
-    files::{from_bytes_le, tlk::Tlk, write_all, Gender, Language},
+    files::{Gender, Language, from_bytes_le, tlk::Tlk, write_all},
 };
+use encoding_rs::WINDOWS_1252;
 use rust_utils::collect_vec::CollectVecResult;
 use std::{
     io::{Read, Seek, Write},
     sync::Arc,
 };
-use encoding_rs::WINDOWS_1252;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ExoString(pub String);
@@ -22,7 +22,7 @@ impl ExoString {
             buf
         };
 
-        let str = 
+        let str =
             // String::from_utf8(buf).into_parse_error()?;
             WINDOWS_1252.decode(&buf).0.to_string();
 
@@ -59,7 +59,7 @@ impl ExoLocString {
         let str_ref: u32 = from_bytes_le(&mut data)?;
         let str_count: u32 = from_bytes_le(&mut data)?;
 
-        let tlk_string = tlk.and_then(|tlk | {
+        let tlk_string = tlk.and_then(|tlk| {
             if str_ref == u32::MAX {
                 None
             } else {
@@ -68,8 +68,7 @@ impl ExoLocString {
             }
         });
 
-        let tlk_string =
-        match tlk_string {
+        let tlk_string = match tlk_string {
             Some(Ok(x)) => Ok(Some(x)),
             None => Ok(None),
             Some(Err(e)) => Err(e),

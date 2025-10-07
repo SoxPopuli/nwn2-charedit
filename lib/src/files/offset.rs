@@ -1,7 +1,10 @@
 #![allow(private_bounds)]
 
 use crate::error::{Error, IntoError};
-use std::{ io::{Seek, SeekFrom}, ops::Add };
+use std::{
+    io::{Seek, SeekFrom},
+    ops::Add,
+};
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[repr(transparent)]
