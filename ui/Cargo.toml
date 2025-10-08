@@ -5,5 +5,7 @@ edition.workspace = true
 
 [dependencies]
 iced = "0.13.1"
+iced_aw = { version = "0.12.2", features = ["menu"] }
+rfd = "0.15.4"
 nwn_lib = { path = "../lib", package = "nwn2-charedit-lib" }
 zip = { version = "5.1.1", features = ["deflate"] }

@@ -2,7 +2,7 @@ use super::{
     bin::{Gff as BinGff, Struct as BinStruct},
     field::LabeledField,
 };
-use crate::{error::Error, files::tlk::Tlk};
+use crate::{error::Error, files::{gff::field::Field, tlk::Tlk}};
 use std::{
     io::{Read, Seek},
     sync::{Arc, RwLock},
@@ -42,6 +42,11 @@ impl StructField {
             Ok(lock) => lock.label.eq_ignore_ascii_case(x),
             _ => false,
         }
+    }
+
+    pub fn read_field<T>(&self, f: impl FnOnce(&Field) -> T) -> T {
+        let lock = self.read().expect("Field poisoned");
+        f(&lock.field)
     }
 }
 
