@@ -6,7 +6,11 @@ use iced::{
     Task,
     widget::{button, column, text},
 };
-use nwn_lib::files::gff::{Gff, field::Field, r#struct::Struct};
+use nwn_lib::files::gff::{
+    Gff,
+    field::Field,
+    r#struct::{Struct, StructField},
+};
 use std::{
     fs::File,
     io::Read,
@@ -78,39 +82,216 @@ fn menu_button(text: &str) -> iced::widget::Button<'_, Message> {
     button(text).style(style)
 }
 
-#[derive(Debug)]
-pub struct Player {
-    pub first_name: String,
-    pub last_name: String,
+#[derive(Debug, Clone)]
+pub struct FieldRef<T> {
+    field: StructField,
+    value: T,
+    changed: bool,
 }
-impl Player {
-    pub fn new(player_struct: &Struct) -> Self {
-        let read_name = |field: &Field| {
-            let s = field.expect_exolocstring().ok()?;
-            Some(
-                s.substrings
-                    .iter()
-                    .map(|sub| &sub.data)
-                    .fold(String::new(), |acc, x| acc + x),
-            )
+impl<T> FieldRef<T> {
+    pub fn new(
+        field: StructField,
+        expect_fn: impl FnOnce(&Field) -> Result<T, nwn_lib::error::Error>,
+    ) -> Result<Self, Error> {
+        let lock = field.read()?;
+        let value = expect_fn(&lock.field)?;
+        drop(lock);
+
+        Ok(Self {
+            field: field.clone(),
+            value,
+            changed: false,
+        })
+    }
+
+    pub fn save(&mut self, save_fn: impl FnOnce(&T) -> Field) {
+        if self.changed {
+            let mut lock = self.field.write().unwrap();
+            lock.field = save_fn(&self.value);
+        }
+    }
+
+    pub fn set(&mut self, new_value: T) {
+        self.value = new_value;
+        self.changed = true;
+    }
+
+    pub fn get(&self) -> &T {
+        &self.value
+    }
+
+    pub fn has_changed(&self) -> bool {
+        self.changed
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Alignment {
+    pub good_evil: FieldRef<u8>,
+    pub lawful_chaotic: FieldRef<u8>,
+}
+impl std::fmt::Display for Alignment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let good_evil = self.good_evil.get();
+        let lawful_chaotic = self.lawful_chaotic.get();
+
+        let good_evil = match good_evil {
+            70..=100 => Some("Good"),
+            31..=69 => Some("Neutral"),
+            0..=30 => Some("Evil"),
+            _ => None,
         };
 
-        let first_name = player_struct
-            .bfs_iter()
-            .find(|x| x.has_label("FirstName"))
-            .and_then(|field| field.read_field(read_name))
-            .expect("Couldn't find first name");
+        let lawful_chaotic = match lawful_chaotic {
+            70..=100 => Some("Lawful"),
+            31..=69 => Some("Neutral"),
+            0..=30 => Some("Chaotic"),
+            _ => None,
+        };
 
-        let last_name = player_struct
-            .bfs_iter()
-            .find(|x| x.has_label("LastName"))
-            .and_then(|field| field.read_field(read_name))
-            .expect("Couldn't find last name");
-
-        Self {
-            first_name,
-            last_name,
+        match (good_evil, lawful_chaotic) {
+            (Some(ge), Some(lc)) => write!(f, "{lc} {ge}"),
+            (Some(ge), None) => write!(f, "{ge}"),
+            (None, Some(lc)) => write!(f, "{lc}"),
+            (None, None) => write!(f, "Unknown"),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Attributes {
+    pub str: FieldRef<u8>,
+    pub dex: FieldRef<u8>,
+    pub con: FieldRef<u8>,
+    pub int: FieldRef<u8>,
+    pub wis: FieldRef<u8>,
+    pub cha: FieldRef<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Player {
+    pub first_name: FieldRef<String>,
+    pub last_name: FieldRef<String>,
+    pub attributes: Attributes,
+    pub alignment: Alignment,
+}
+
+macro_rules! make_builder {
+    (struct $name: ident { $($field: ident : $t: ty),+ $(,)* }) => {
+        #[derive(Debug, Default)]
+        pub struct $name {
+            $(pub $field : Option<$t>),+
+        }
+        impl $name {
+            $(
+                pub fn $field (&mut self, x: $t) {
+                    self.$field = Some(x);
+                }
+            )+
+        }
+    };
+}
+
+make_builder! {
+    struct PlayerBuilder {
+        first_name: FieldRef<String>,
+        last_name: FieldRef<String>,
+        str: FieldRef<u8>,
+        dex: FieldRef<u8>,
+        con: FieldRef<u8>,
+        int: FieldRef<u8>,
+        wis: FieldRef<u8>,
+        cha: FieldRef<u8>,
+        good_evil: FieldRef<u8>,
+        lawful_chaotic: FieldRef<u8>,
+    }
+}
+
+impl PlayerBuilder {
+    fn build(self) -> Result<Player, Error> {
+        macro_rules! unwrap_field {
+            ($field: ident) => {
+                self.$field
+                    .ok_or($crate::error::Error::MissingField(format!(
+                        "Missing field {} in player builder",
+                        stringify!($field)
+                    )))?
+            };
+        }
+
+        Ok(Player {
+            first_name: unwrap_field!(first_name),
+            last_name: unwrap_field!(last_name),
+            attributes: Attributes {
+                str: unwrap_field!(str),
+                dex: unwrap_field!(dex),
+                con: unwrap_field!(con),
+                int: unwrap_field!(int),
+                wis: unwrap_field!(wis),
+                cha: unwrap_field!(cha),
+            },
+            alignment: Alignment {
+                good_evil: unwrap_field!(good_evil),
+                lawful_chaotic: unwrap_field!(lawful_chaotic),
+            },
+        })
+    }
+}
+
+impl Player {
+    pub fn new(player_struct: &Struct) -> Result<Self, Error> {
+        let read_name = |field: &Field| {
+            let s = field.expect_exolocstring()?;
+            Ok(s.substrings
+                .iter()
+                .map(|sub| &sub.data)
+                .fold(String::new(), |acc, x| acc + x))
+        };
+
+        let mut player_builder = PlayerBuilder::default();
+
+        for field in &player_struct.fields {
+            let lock = field.read()?;
+            let label = &lock.label;
+
+            match label.as_str() {
+                "FirstName" => {
+                    player_builder.first_name(FieldRef::new(field.clone(), read_name)?);
+                }
+                "LastName" => {
+                    player_builder.last_name(FieldRef::new(field.clone(), read_name)?);
+                }
+                "Str" => {
+                    player_builder.str(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+                "Dex" => {
+                    player_builder.dex(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+                "Con" => {
+                    player_builder.con(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+                "Int" => {
+                    player_builder.int(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+                "Wis" => {
+                    player_builder.wis(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+                "Cha" => {
+                    player_builder.cha(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+                "GoodEvil" => {
+                    player_builder.good_evil(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+                "LawfulChaotic" => {
+                    player_builder
+                        .lawful_chaotic(FieldRef::new(field.clone(), Field::expect_byte)?);
+                }
+
+                _ => {}
+            }
+        }
+
+        player_builder.build()
     }
 }
 
@@ -132,9 +313,13 @@ impl SaveFile {
             lock.field.expect_list().cloned().unwrap()
         };
 
-        let players = player_list.iter().map(Player::new).collect();
+        let players: Vec<Player> = player_list
+            .iter()
+            .map(Player::new)
+            .map_while(Result::ok)
+            .collect();
 
-        // println!("{player_list:#?}");
+        println!("{players:#?}");
 
         Self { file, players }
     }
@@ -180,10 +365,10 @@ impl App {
     }
 
     fn menu(&self) -> Element<'_> {
-        use iced_aw::menu::{Item, Menu, MenuBar};
+        use iced_aw::menu::{Item, Menu};
         use iced_aw::{menu_bar, menu_items};
 
-        let menu_template = |items| Menu::new(items).max_width(180.0).offset(6.0);
+        let menu_template = |items| Menu::new(items).max_width(80.0).offset(6.0);
 
         macro_rules! menu {
             ($($x:tt)+) => {
@@ -214,7 +399,7 @@ impl App {
             Some(save) => save
                 .players
                 .iter()
-                .map(|p| format!("{} {}", p.first_name, p.last_name))
+                .map(|p| format!("{} {}", p.first_name.get(), p.last_name.get()))
                 .map(text)
                 .map(|x| x.into())
                 .collect(),

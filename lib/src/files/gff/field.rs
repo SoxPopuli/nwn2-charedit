@@ -113,6 +113,34 @@ macro_rules! impl_expect_field {
     };
 }
 
+macro_rules! impl_into_field {
+    ($t: ty, $variant: ident) => {
+        impl From<$t> for Field {
+            fn from(value: $t) -> Field {
+                use Field::*;
+                $variant(value)
+            }
+        }
+    };
+}
+
+impl_into_field!(u8, Byte);
+impl_into_field!(ExoLocString, ExoLocString);
+impl_into_field!(ExoString, ExoString);
+impl_into_field!(char, Char);
+impl_into_field!(ResRef, ResRef);
+impl_into_field!(f64, Double);
+impl_into_field!(u32, DWord);
+impl_into_field!(u64, DWord64);
+impl_into_field!(f32, Float);
+impl_into_field!(i32, Int);
+impl_into_field!(i64, Int64);
+impl_into_field!(i16, Short);
+impl_into_field!(Void, Void);
+impl_into_field!(u16, Word);
+impl_into_field!(Struct, Struct);
+impl_into_field!(Vec<Struct>, List);
+
 impl Field {
     pub fn get_field_type(&self) -> FieldType {
         match self {
