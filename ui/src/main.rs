@@ -86,7 +86,6 @@ fn menu_button(text: &str) -> iced::widget::Button<'_, Message> {
 pub struct FieldRef<T> {
     field: StructField,
     value: T,
-    changed: bool,
 }
 impl<T> FieldRef<T> {
     pub fn new(
@@ -100,28 +99,18 @@ impl<T> FieldRef<T> {
         Ok(Self {
             field: field.clone(),
             value,
-            changed: false,
         })
     }
 
-    pub fn save(&mut self, save_fn: impl FnOnce(&T) -> Field) {
-        if self.changed {
-            let mut lock = self.field.write().unwrap();
-            lock.field = save_fn(&self.value);
-        }
-    }
-
-    pub fn set(&mut self, new_value: T) {
+    pub fn set(&mut self, new_value: T, save_fn: impl FnOnce(&T) -> Field) {
         self.value = new_value;
-        self.changed = true;
+
+        let mut lock = self.field.write().unwrap();
+        lock.field = save_fn(&self.value);
     }
 
     pub fn get(&self) -> &T {
         &self.value
-    }
-
-    pub fn has_changed(&self) -> bool {
-        self.changed
     }
 }
 
@@ -323,6 +312,13 @@ impl SaveFile {
 
         Self { file, players }
     }
+
+    pub fn save_changes<W>(&mut self, output: &mut W) -> Result<(), Error>
+    where
+        W: std::io::Write,
+    {
+        Ok(self.file.write(output)?)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -395,18 +391,33 @@ impl App {
     }
 
     fn view(&self) -> Element<'_> {
+        fn view_player(p: &Player) -> Element<'_> {
+            column![
+                text(format!("{} {}", p.first_name.get(), p.last_name.get())),
+                text(format!("Strength: {}", p.attributes.str.get())),
+                text(format!("Dexterity: {}", p.attributes.dex.get())),
+                text(format!("Constitution: {}", p.attributes.con.get())),
+                text(format!("Intelligence: {}", p.attributes.int.get())),
+                text(format!("Wisdom: {}", p.attributes.wis.get())),
+                text(format!("Charisma: {}", p.attributes.cha.get())),
+                text(format!("Alignment: {}", p.alignment))
+            ]
+            .into()
+        }
+
         let names = match &self.save_file {
             Some(save) => save
                 .players
                 .iter()
-                .map(|p| format!("{} {}", p.first_name.get(), p.last_name.get()))
-                .map(text)
-                .map(|x| x.into())
+                .map(view_player)
                 .collect(),
             None => Vec::new(),
         };
 
-        let body = iced::widget::Column::with_children(names).padding(8.0);
+        let body = iced::widget::Column::with_children(names).padding(iced::Padding {
+            top: 0.0,
+            ..(16.0).into()
+        });
 
         column![self.menu(), body].into()
     }
