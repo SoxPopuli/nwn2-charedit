@@ -6,7 +6,7 @@ use reader::{StringInfo, TlkReader};
 use rust_utils::collect_vec::CollectVecResult;
 use std::{
     io::{Cursor, Read, Seek},
-    sync::{Arc, LazyLock},
+    sync::Arc,
 };
 
 #[derive(Debug, Default, PartialEq)]
@@ -45,17 +45,8 @@ impl Header {
     }
 }
 
-static EMPTY_STRING: LazyLock<Arc<str>> = LazyLock::new(|| {
-    let s = "";
-    Arc::<str>::from(s)
-});
-
-pub fn get_empty_string() -> Arc<str> {
-    EMPTY_STRING.clone()
-}
-
 #[derive(Debug, PartialEq)]
-pub struct Tlk<R: Read + Seek = Cursor<Vec<u8>>> {
+pub struct Tlk<R: Read + Seek = Cursor<&'static [u8]>> {
     pub header: Header,
     pub reader: TlkReader<R>,
 }
@@ -83,9 +74,9 @@ impl<R: Read + Seek> Tlk<R> {
         Ok(Self { header, reader })
     }
 
-    pub fn get_from_str_ref(&self, str_ref: u32) -> Result<Arc<str>, Error> {
+    pub fn get_from_str_ref(&self, str_ref: u32) -> Result<Option<Arc<str>>, Error> {
         if str_ref == u32::MAX {
-            Ok(EMPTY_STRING.clone())
+            Ok(None)
         } else {
             self.reader.read_index(str_ref)
         }
@@ -113,7 +104,7 @@ mod tests {
         let strings = (0..100).map(|i| tlk.get_from_str_ref(i).unwrap());
 
         for s in strings {
-            println!("{s}");
+            println!("{s:?}");
         }
 
         let start = SystemTime::now();

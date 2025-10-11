@@ -106,14 +106,18 @@ where
     }
 
     /// Gets str ref at index, and reads from data if not done so before
-    pub(crate) fn read_index(&self, index: u32) -> Result<Arc<str>, Error> {
+    pub(crate) fn read_index(&self, index: u32) -> Result<Option<Arc<str>>, Error> {
+        if index == u32::MAX {
+            return Ok(None);
+        }
+
         let possible_entry = {
             let inner = self.inner.read().unwrap();
             inner.entry_cache.get(&index).cloned()
         };
 
         if let Some(entry) = possible_entry {
-            Ok(entry)
+            Ok(Some(entry))
         } else {
             let mut inner = self.inner.write().unwrap();
 
@@ -126,14 +130,14 @@ where
                 .seek_with_offset(&mut inner.data, self.string_entry_offset)?;
 
             let str = if info.size == 0 {
-                super::EMPTY_STRING.clone()
+                return Ok(None);
             } else {
                 read_str(&mut inner.data, info.size as usize)?
             };
 
             inner.entry_cache.insert(index, str.clone());
 
-            Ok(str)
+            Ok(Some(str))
         }
     }
 }

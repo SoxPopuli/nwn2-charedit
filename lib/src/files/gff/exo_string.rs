@@ -59,19 +59,9 @@ impl ExoLocString {
         let str_ref: u32 = from_bytes_le(&mut data)?;
         let str_count: u32 = from_bytes_le(&mut data)?;
 
-        let tlk_string = tlk.and_then(|tlk| {
-            if str_ref == u32::MAX {
-                None
-            } else {
-                let s = tlk.get_from_str_ref(str_ref as u32);
-                Some(s)
-            }
-        });
-
-        let tlk_string = match tlk_string {
-            Some(Ok(x)) => Ok(Some(x)),
+        let tlk_string = match tlk {
+            Some(tlk) => tlk.get_from_str_ref(str_ref),
             None => Ok(None),
-            Some(Err(e)) => Err(e),
         }?;
 
         let substrings = (0..str_count)
