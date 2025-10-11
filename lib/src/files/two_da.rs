@@ -13,6 +13,50 @@ pub struct DataTable {
     pub columns: Vec<String>,
     pub data: Vec2d<Option<String>>,
 }
+impl DataTable {
+    pub fn find_column_index(&self, column: &str) -> Option<usize> {
+        self.columns
+            .iter()
+            .enumerate()
+            .find(|(_, x)| x.as_str() == column)
+            .map(|(i, _)| i)
+    }
+
+    /// Get an iterator over data in column *index*
+    /// ---
+    /// Returns empty iter if out of bounds
+    pub fn get_column_data(&self, index: usize) -> impl Iterator<Item = Option<&str>> {
+        let iter = if index < self.columns.len() {
+            let mut row = 0;
+            Some(std::iter::from_fn(move || {
+                let data = self.data.get(index, row).map(|x| x.as_deref());
+
+                row += 1;
+
+                data
+            }))
+        } else {
+            None
+        };
+
+        iter.into_iter().flatten()
+    }
+
+    pub fn get_row_data(&self, index: usize) -> impl Iterator<Item = Option<&str>> {
+        let iter = if index < self.data.height() {
+            let mut col = 0;
+            Some(std::iter::from_fn(move || {
+                let data = self.data.get(col, index).map(|x| x.as_deref());
+                col += 1;
+                data
+            }))
+        } else {
+            None
+        };
+
+        iter.into_iter().flatten()
+    }
+}
 
 use rust_utils::{string_stream::StringStream, vec2d::Vec2d};
 
