@@ -5,7 +5,6 @@ use crate::error::Error;
 use reader::{StringInfo, TlkReader};
 use rust_utils::collect_vec::CollectVecResult;
 use std::{
-    cell::RefCell,
     io::{Cursor, Read, Seek},
     sync::{Arc, LazyLock},
 };
@@ -58,7 +57,7 @@ pub fn get_empty_string() -> Arc<str> {
 #[derive(Debug, PartialEq)]
 pub struct Tlk<R: Read + Seek = Cursor<Vec<u8>>> {
     pub header: Header,
-    pub reader: RefCell<TlkReader<R>>,
+    pub reader: TlkReader<R>,
 }
 impl<R> Default for Tlk<R>
 where
@@ -67,7 +66,7 @@ where
     fn default() -> Self {
         Self {
             header: Default::default(),
-            reader: RefCell::default(),
+            reader: TlkReader::default(),
         }
     }
 }
@@ -79,24 +78,16 @@ impl<R: Read + Seek> Tlk<R> {
             .map(|_| StringInfo::read(&mut data))
             .collect_vec_result()?;
 
-        let reader = TlkReader {
-            data,
-            string_info,
-            entry_cache: Default::default(),
-            string_entry_offset: header.string_entry_offset.to_offset(),
-        };
+        let reader = TlkReader::new(string_info, header.string_entry_offset.to_offset(), data);
 
-        Ok(Self {
-            header,
-            reader: reader.into(),
-        })
+        Ok(Self { header, reader })
     }
 
     pub fn get_from_str_ref(&self, str_ref: u32) -> Result<Arc<str>, Error> {
         if str_ref == u32::MAX {
             Ok(EMPTY_STRING.clone())
         } else {
-            self.reader.borrow_mut().read_index(str_ref)
+            self.reader.read_index(str_ref)
         }
     }
 }

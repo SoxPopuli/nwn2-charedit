@@ -2,7 +2,10 @@ use super::{
     bin::{Gff as BinGff, Struct as BinStruct},
     field::LabeledField,
 };
-use crate::{error::Error, files::{gff::field::Field, tlk::Tlk}};
+use crate::{
+    error::Error,
+    files::{gff::field::Field, tlk::Tlk},
+};
 use std::{
     io::{Read, Seek},
     sync::{Arc, RwLock},
