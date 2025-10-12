@@ -1,6 +1,6 @@
+pub mod dds;
 pub mod gff;
 pub mod offset;
-pub use offset::Offset;
 pub mod res_ref;
 pub mod tlk;
 pub mod two_da;
@@ -9,20 +9,23 @@ use crate::{
     error::{Error, IntoError},
     int_enum,
 };
+pub use offset::Offset;
 use rust_utils::byte_readers::FromBytes;
 use std::io::{Read, Write};
 
-int_enum! { Language,
-    English, 0,
-    French, 1,
-    German, 2,
-    Italian, 3,
-    Spanish, 4,
-    Polish, 5,
-    Korean, 128,
-    ChineseTraditional, 129,
-    ChineseSimplified, 130,
-    Japanese, 131
+int_enum! { 
+    pub enum Language: u8 {
+        English = 0,
+        French = 1,
+        German = 2,
+        Italian = 3,
+        Spanish = 4,
+        Polish = 5,
+        Korean = 128,
+        ChineseTraditional = 129,
+        ChineseSimplified = 130,
+        Japanese = 131,
+    }
 }
 impl Default for Language {
     fn default() -> Self {
@@ -30,9 +33,11 @@ impl Default for Language {
     }
 }
 
-int_enum! { Gender,
-    Masculine, 0,
-    Feminine, 1
+int_enum! { 
+    pub enum Gender: u8 {
+        Masculine = 0,
+        Feminine = 1
+    }
 }
 
 impl Default for Gender {

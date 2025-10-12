@@ -3,15 +3,40 @@ pub fn pair_second<A, B>((_, b): (A, B)) -> B {
 }
 
 #[macro_export]
+macro_rules! open_enum {
+    ($viz: vis enum $name: ident : $repr: ty { $($k: ident = $v: expr),+ $(,)? }) => {
+        #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default)]
+        #[repr(transparent)]
+        $viz struct $name(pub $repr);
+
+        #[allow(non_upper_case_globals)]
+        #[allow(non_snake_case)]
+        impl $name {
+            $(pub const $k: $name = $name($v);)+
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match *self {
+                    $(Self::$k => write!(f, stringify!($k)),)+
+                    $name(x) => write!(f, "{x}"),
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! int_enum {
-    ($name: ident, $($case: ident, $val: expr),+) => {
-        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    ($viz: vis enum $name: ident : $sz: ty { $($case: ident = $val: expr),+ $(,)? }) => {
+        #[repr($sz)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
         pub enum $name {
             $($case = $val),+
         }
 
         impl $name {
-            pub fn as_u8(&self) -> u8 {
+            pub fn as_num(&self) -> $sz {
                 use $name::*;
                 match self {
                     $($case => $val),+
@@ -19,9 +44,9 @@ macro_rules! int_enum {
             }
         }
 
-        impl TryFrom<u8> for $name {
+        impl TryFrom<$sz> for $name {
             type Error = $crate::error::Error;
-            fn try_from(value: u8) -> Result<Self, Self::Error> {
+            fn try_from(value: $sz) -> Result<Self, Self::Error> {
                 use $name::*;
                 use $crate::error::Error::EnumError;
                 match value {
@@ -34,9 +59,9 @@ macro_rules! int_enum {
             }
         }
 
-        impl From<$name> for u8 {
-            fn from(value: $name) -> u8 {
-                value.as_u8()
+        impl From<$name> for $sz {
+            fn from(value: $name) -> $sz {
+                value.as_num()
             }
         }
     };

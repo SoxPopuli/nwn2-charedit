@@ -400,7 +400,7 @@ impl Field {
     }
 
     fn write<W: Write>(&self, writer: &mut W) -> Result<(), Error> {
-        let index = self.id.as_u8() as u32;
+        let index = self.id.as_num() as u32;
         write_all(writer, &index.to_le_bytes()).into_write_error()?;
         write_all(writer, &self.label_index.to_le_bytes())?;
         write_all(writer, &self.data_or_data_offset.to_le_bytes())?;
@@ -520,24 +520,26 @@ impl Field {
     }
 }
 
-int_enum! { FieldType,
-    Byte, 0,
-    Char, 1,
-    Word, 2,
-    Short, 3,
-    DWord, 4,
-    Int, 5,
-    DWord64, 6,
-    Int64, 7,
-    Float, 8,
-    Double, 9,
-    ExoString, 10,
-    ResRef, 11,
-    ExoLocString, 12,
-    Void, 13,
-    Struct, 14,
-    List, 15,
-    Invalid, 255
+int_enum! { 
+    pub enum FieldType: u8 {
+        Byte = 0,
+        Char = 1,
+        Word = 2,
+        Short = 3,
+        DWord = 4,
+        Int = 5,
+        DWord64 = 6,
+        Int64 = 7,
+        Float = 8,
+        Double = 9,
+        ExoString = 10,
+        ResRef = 11,
+        ExoLocString = 12,
+        Void = 13,
+        Struct = 14,
+        List = 15,
+        Invalid = 255
+    }
 }
 impl FieldType {
     // A type is complex if it can't be represented using only 4 bytes

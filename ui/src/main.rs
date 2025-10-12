@@ -4,7 +4,7 @@ mod ids;
 use crate::error::Error;
 use iced::{
     Task,
-    widget::{button, column, text},
+    widget::{button, column, row, text},
 };
 use nwn_lib::files::gff::{
     Gff,
@@ -308,8 +308,6 @@ impl SaveFile {
             .map_while(Result::ok)
             .collect();
 
-        println!("{players:#?}");
-
         Self { file, players }
     }
 
@@ -392,25 +390,28 @@ impl App {
 
     fn view(&self) -> Element<'_> {
         fn view_player(p: &Player) -> Element<'_> {
+            fn row(name: &str, value: impl std::fmt::Display) -> iced_aw::GridRow<'_, Message> {
+                iced_aw::grid_row![text(format!("{name}:")), text(value.to_string())]
+            }
+
             column![
                 text(format!("{} {}", p.first_name.get(), p.last_name.get())),
-                text(format!("Strength: {}", p.attributes.str.get())),
-                text(format!("Dexterity: {}", p.attributes.dex.get())),
-                text(format!("Constitution: {}", p.attributes.con.get())),
-                text(format!("Intelligence: {}", p.attributes.int.get())),
-                text(format!("Wisdom: {}", p.attributes.wis.get())),
-                text(format!("Charisma: {}", p.attributes.cha.get())),
-                text(format!("Alignment: {}", p.alignment))
+                iced_aw::grid![
+                    row("Strength", p.attributes.str.get()),
+                    row("Dexterity", p.attributes.dex.get()),
+                    row("Constitution", p.attributes.con.get()),
+                    row("Intelligence", p.attributes.int.get()),
+                    row("Wisdom", p.attributes.wis.get()),
+                    row("Charisma", p.attributes.cha.get()),
+                    row("Alignment", &p.alignment)
+                ]
+                .column_spacing(20),
             ]
             .into()
         }
 
         let names = match &self.save_file {
-            Some(save) => save
-                .players
-                .iter()
-                .map(view_player)
-                .collect(),
+            Some(save) => save.players.iter().map(view_player).collect(),
             None => Vec::new(),
         };
 
@@ -419,7 +420,24 @@ impl App {
             ..(16.0).into()
         });
 
-        column![self.menu(), body].into()
+        let icon = {
+            // let file = include_bytes!("../../lib/src/tests/files/is_fireball.dds");
+
+            // let dds = ddsfile::Dds::read(file.as_slice()).unwrap();
+
+            // let data = dds.get_data(0).unwrap();
+            // let width = dds.get_width();
+            // let height = dds.get_height();
+            // dbg!((width, height));
+            // let handle = iced::widget::image::Handle::from_rgba(width, height, data.to_vec());
+
+            iced::widget::container(
+                iced::widget::Image::new(handle),
+            )
+            .style(iced::widget::container::bordered_box)
+        };
+
+        column![self.menu(), body, icon].into()
     }
 
     fn run() -> Result<(), iced::Error> {
@@ -433,4 +451,99 @@ impl App {
 
 fn main() {
     App::run().unwrap()
+}
+
+fn read_dir_recursive(path: &std::path::Path) -> impl Iterator<Item = PathBuf> {
+    use std::collections::VecDeque;
+    use std::fs::DirEntry;
+    use std::path::Path;
+
+    fn read_dir(dir: impl AsRef<Path>) -> impl Iterator<Item = DirEntry> {
+        dir.as_ref().read_dir().unwrap().filter_map(Result::ok)
+    }
+
+    let mut stack = VecDeque::from_iter(read_dir(path));
+
+    std::iter::from_fn(move || {
+        while let Some(x) = stack.pop_front() {
+            let metadata = x.metadata().unwrap();
+            if metadata.is_file() {
+                return Some(x.path());
+            } else if metadata.is_dir() {
+                read_dir(x.path()).for_each(|x| stack.push_front(x));
+            }
+        }
+
+        None
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn ros_test() {
+        let tlk_file = {
+            let file = include_bytes!(
+                "/home/charlotte/.local/share/Steam/steamapps/common/NWN2 Enhanced Edition/dialog.tlk"
+            );
+            let file = std::io::Cursor::new(file);
+
+            nwn_lib::files::tlk::Tlk::read(file).unwrap()
+        };
+
+        // let file = include_bytes!("../../files/npc_bevil.ros");
+        let file = include_bytes!("../../files/roster.rst");
+        let file = std::io::Cursor::new(file);
+        let gff = super::Gff::read(file, Some(&tlk_file)).unwrap();
+
+        panic!("{gff:#?}");
+    }
+
+    #[test]
+    fn spells() {
+        let tlk_file = {
+            let file = include_bytes!(
+                "/home/charlotte/.local/share/Steam/steamapps/common/NWN2 Enhanced Edition/dialog.tlk"
+            );
+            let file = std::io::Cursor::new(file);
+
+            nwn_lib::files::tlk::Tlk::read(file).unwrap()
+        };
+
+        let spells = {
+            let file = include_bytes!(
+                "/home/charlotte/.local/share/Steam/steamapps/common/NWN2 Enhanced Edition/data/2DA/spells.2da"
+            );
+
+            nwn_lib::files::two_da::parse(file.as_slice()).unwrap()
+        };
+
+        let icon_index = spells.find_column_index("IconResRef").unwrap();
+        let name_index = 0;
+        let description_index = spells.find_column_index("SpellDesc").unwrap();
+
+        let icons = spells.get_column_data(icon_index);
+        let names = spells.get_column_data(name_index);
+        let descriptions = spells.get_column_data(description_index).map(|x| {
+            x.and_then(|x| {
+                let r = x.parse().ok()?;
+                tlk_file.get_from_str_ref(r).ok()
+            })
+        });
+
+        let x = icons
+            .zip(names)
+            .zip(descriptions)
+            .map(|x| {
+                let ((a, b), c) = x;
+                (a, b, c)
+            })
+            .filter_map(|x| match x {
+                (Some(a), Some(b), Some(c)) => Some((a, b, c)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        panic!("{x:#?}");
+    }
 }

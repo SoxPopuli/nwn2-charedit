@@ -150,8 +150,8 @@ impl ExoLocSubString {
         W: Write,
     {
         let string_id = {
-            let language = (self.language.as_u8() as u32) * 2;
-            let gender = self.gender.as_u8() as u32;
+            let language = (self.language.as_num() as u32) * 2;
+            let gender = self.gender.as_num() as u32;
 
             language + gender
         };

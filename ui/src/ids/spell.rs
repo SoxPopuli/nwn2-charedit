@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-crate::open_enum! {
+nwn_lib::open_enum! {
     pub enum Spell: u16 {
         AcidFog = 0,
         Aid = 1,
