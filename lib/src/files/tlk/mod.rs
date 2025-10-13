@@ -92,7 +92,7 @@ mod tests {
     fn read_test() {
         use std::time::SystemTime;
 
-        let data = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
+        let data = Cursor::new(include_bytes!("../../tests/files/dialog.tlk"));
 
         let start = SystemTime::now();
         let tlk = Tlk::read(data).unwrap();

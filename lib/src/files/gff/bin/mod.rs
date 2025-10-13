@@ -9,6 +9,7 @@ use crate::{
         gff::{
             Writeable,
             exo_string::{ExoLocString, ExoString},
+            field::U32Char,
             void::Void,
         },
         res_ref::ResRef,
@@ -17,7 +18,6 @@ use crate::{
     },
     int_enum,
 };
-use encoding_rs::WINDOWS_1252;
 use rust_utils::collect_vec::CollectVecResult;
 use std::{
     collections::HashMap,
@@ -180,15 +180,7 @@ impl Gff {
             Byte(b) => *b as u32,
             ExoLocString(s) => write_to_data(s, &mut self.field_data),
             ExoString(s) => write_to_data(s, &mut self.field_data),
-            Char(c) => {
-                let str = c.to_string();
-                let encoded = WINDOWS_1252.encode(&str).0;
-
-                let mut buf = [0u8; 4];
-                buf[..encoded.len()].copy_from_slice(&encoded);
-
-                u32::from_le_bytes(buf)
-            }
+            Char(c) => c.0,
             ResRef(r) => write_to_data(r, &mut self.field_data),
             Double(d) => write_primitive!(d),
             DWord(w) => *w,
@@ -236,10 +228,10 @@ impl Gff {
         };
 
         let struct_index = self.structs.len();
-        self.structs.push(bin_struct);
+        self.structs.push(bin_struct.clone());
 
         let offset = if field_count == 0 {
-            panic!("Struct has no fields?");
+            s.original_data_or_data_offset
         } else if s.fields.len() == 1 {
             //Index into field array
             let field = &s.fields[0].read().unwrap();
@@ -347,7 +339,7 @@ impl Struct {
         }
 
         if self.field_count == 0 {
-            panic!("Struct has no fields?")
+            None
         } else if self.field_count == 1 {
             // Index into field array
             let field = &file.fields[self.data_or_data_offset as usize];
@@ -447,19 +439,11 @@ impl Field {
 
         match self.id {
             FieldType::Byte => {
+                assert!(self.data_or_data_offset <= 255);
                 let bytes = self.data_or_data_offset.to_le_bytes();
                 Ok(Field::Byte(bytes[0]))
             }
-            FieldType::Char => {
-                let bytes = self.data_or_data_offset.to_le_bytes();
-                let char = WINDOWS_1252
-                    .decode_without_bom_handling(&bytes)
-                    .0
-                    .chars()
-                    .nth(0);
-                let char = char.expect("No readable char found");
-                Ok(Field::Char(char))
-            }
+            FieldType::Char => Ok(Field::Char(U32Char(self.data_or_data_offset))),
             FieldType::Word => Ok(Field::Word(read_smaller!(u16))),
             FieldType::Short => Ok(Field::Short(read_smaller!(i16))),
             FieldType::DWord => Ok(Field::DWord(self.data_or_data_offset)),
@@ -520,7 +504,7 @@ impl Field {
     }
 }
 
-int_enum! { 
+int_enum! {
     pub enum FieldType: u8 {
         Byte = 0,
         Char = 1,

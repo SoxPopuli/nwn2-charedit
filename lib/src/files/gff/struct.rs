@@ -57,6 +57,7 @@ impl StructField {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Struct {
     pub id: u32,
+    pub(crate) original_data_or_data_offset: u32,
     pub fields: Vec<StructField>,
 }
 impl Struct {
@@ -83,7 +84,11 @@ impl Struct {
             .map(|x| x.map(StructField::new))
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Self { id: s.id, fields })
+        Ok(Self {
+            id: s.id,
+            original_data_or_data_offset: s.data_or_data_offset,
+            fields,
+        })
     }
 
     /// Searches fields for `name` using depth first search

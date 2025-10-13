@@ -420,24 +420,7 @@ impl App {
             ..(16.0).into()
         });
 
-        let icon = {
-            // let file = include_bytes!("../../lib/src/tests/files/is_fireball.dds");
-
-            // let dds = ddsfile::Dds::read(file.as_slice()).unwrap();
-
-            // let data = dds.get_data(0).unwrap();
-            // let width = dds.get_width();
-            // let height = dds.get_height();
-            // dbg!((width, height));
-            // let handle = iced::widget::image::Handle::from_rgba(width, height, data.to_vec());
-
-            iced::widget::container(
-                iced::widget::Image::new(handle),
-            )
-            .style(iced::widget::container::bordered_box)
-        };
-
-        column![self.menu(), body, icon].into()
+        column![self.menu(), body].into()
     }
 
     fn run() -> Result<(), iced::Error> {
@@ -479,71 +462,4 @@ fn read_dir_recursive(path: &std::path::Path) -> impl Iterator<Item = PathBuf> {
 }
 
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn ros_test() {
-        let tlk_file = {
-            let file = include_bytes!(
-                "/home/charlotte/.local/share/Steam/steamapps/common/NWN2 Enhanced Edition/dialog.tlk"
-            );
-            let file = std::io::Cursor::new(file);
-
-            nwn_lib::files::tlk::Tlk::read(file).unwrap()
-        };
-
-        // let file = include_bytes!("../../files/npc_bevil.ros");
-        let file = include_bytes!("../../files/roster.rst");
-        let file = std::io::Cursor::new(file);
-        let gff = super::Gff::read(file, Some(&tlk_file)).unwrap();
-
-        panic!("{gff:#?}");
-    }
-
-    #[test]
-    fn spells() {
-        let tlk_file = {
-            let file = include_bytes!(
-                "/home/charlotte/.local/share/Steam/steamapps/common/NWN2 Enhanced Edition/dialog.tlk"
-            );
-            let file = std::io::Cursor::new(file);
-
-            nwn_lib::files::tlk::Tlk::read(file).unwrap()
-        };
-
-        let spells = {
-            let file = include_bytes!(
-                "/home/charlotte/.local/share/Steam/steamapps/common/NWN2 Enhanced Edition/data/2DA/spells.2da"
-            );
-
-            nwn_lib::files::two_da::parse(file.as_slice()).unwrap()
-        };
-
-        let icon_index = spells.find_column_index("IconResRef").unwrap();
-        let name_index = 0;
-        let description_index = spells.find_column_index("SpellDesc").unwrap();
-
-        let icons = spells.get_column_data(icon_index);
-        let names = spells.get_column_data(name_index);
-        let descriptions = spells.get_column_data(description_index).map(|x| {
-            x.and_then(|x| {
-                let r = x.parse().ok()?;
-                tlk_file.get_from_str_ref(r).ok()
-            })
-        });
-
-        let x = icons
-            .zip(names)
-            .zip(descriptions)
-            .map(|x| {
-                let ((a, b), c) = x;
-                (a, b, c)
-            })
-            .filter_map(|x| match x {
-                (Some(a), Some(b), Some(c)) => Some((a, b, c)),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-
-        panic!("{x:#?}");
-    }
-}
+mod tests {}

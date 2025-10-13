@@ -13,7 +13,7 @@ pub use offset::Offset;
 use rust_utils::byte_readers::FromBytes;
 use std::io::{Read, Write};
 
-int_enum! { 
+int_enum! {
     pub enum Language: u8 {
         English = 0,
         French = 1,
@@ -33,7 +33,7 @@ impl Default for Language {
     }
 }
 
-int_enum! { 
+int_enum! {
     pub enum Gender: u8 {
         Masculine = 0,
         Feminine = 1

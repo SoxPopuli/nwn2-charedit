@@ -46,12 +46,31 @@ use paste::paste;
 // | 14      | Struct        | yes*     |
 // | 15      | List          | yes**    |
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
+#[repr(transparent)]
+pub struct U32Char(pub u32);
+impl U32Char {
+    pub fn get_char(&self) -> Option<char> {
+        encoding_rs::WINDOWS_1252
+            .decode_without_bom_handling(&self.0.to_le_bytes())
+            .0
+            .chars()
+            .next()
+    }
+
+    pub fn set_char(&mut self, c: char) {
+        self.0 = c as u32;
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Field {
     Byte(u8),
     ExoLocString(ExoLocString),
     ExoString(ExoString),
-    Char(char),
+    /// Sometimes char values can be above 255 (e.g. `u32::MAX`),
+    /// therefore we store the entire u32 value
+    Char(U32Char),
     ResRef(ResRef),
     Double(f64),
     DWord(u32),
@@ -127,7 +146,7 @@ macro_rules! impl_into_field {
 impl_into_field!(u8, Byte);
 impl_into_field!(ExoLocString, ExoLocString);
 impl_into_field!(ExoString, ExoString);
-impl_into_field!(char, Char);
+impl_into_field!(U32Char, Char);
 impl_into_field!(ResRef, ResRef);
 impl_into_field!(f64, Double);
 impl_into_field!(u32, DWord);
@@ -164,7 +183,7 @@ impl Field {
     }
 
     impl_expect_field!(Byte, u8);
-    impl_expect_field!(Char, char);
+    impl_expect_field!(Char, U32Char);
     impl_expect_field!(Double, f64);
     impl_expect_field!(DWord64, u64);
     impl_expect_field!(DWord, u32);

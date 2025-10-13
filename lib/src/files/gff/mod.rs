@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn read_test() {
         let gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
-        let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
+        let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.tlk"));
 
         let (_, gff) = read_tlk_and_gff(gff_file, tlk_file);
 
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn write_test() {
         let mut gff_file = Cursor::new(include_bytes!("../../tests/files/playerlist.ifo"));
-        let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.TLK"));
+        let tlk_file = Cursor::new(include_bytes!("../../tests/files/dialog.tlk"));
 
         let tlk = Tlk::read(tlk_file).unwrap();
 
@@ -283,8 +283,8 @@ mod tests {
         assert_eq!(gff_bin.field_data, gff_2_bin.field_data);
 
         assert_eq!(gff_bin.labels, gff_2_bin.labels);
-        assert_eq!(gff_bin.fields, gff_2_bin.fields);
         assert_eq!(gff_bin.structs, gff_2_bin.structs);
+        assert_eq!(gff_bin.fields, gff_2_bin.fields);
 
         // Takes too long to print with pretty_assertions
         ::core::assert_eq!(gff_bin, gff_2_bin);
@@ -312,7 +312,7 @@ mod tests {
                 str_ref: 4294967295,
                 tlk_string: None,
                 substrings: vec![ExoLocSubString {
-                    data: "Cassie".into(),
+                    data: "Merrin".into(),
                     gender: Gender::Masculine,
                     language: Language::English,
                 }],

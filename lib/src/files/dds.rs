@@ -351,18 +351,23 @@ fn read_block(reader: &mut BitReader) -> Result<(), Error> {
     let to_error = || Error::ParseError("DDS: Unexpected EOF".to_string());
 
     macro_rules! read_bits {
-        ($f: ident, $bits: expr) => {{
-            reader.$f($bits).ok_or_else(to_error)
-        }};
+        ($f: ident, $bits: expr) => {{ reader.$f($bits).ok_or_else(to_error) }};
     }
 
     let rotation = read_bits!(get_bits_u8, 2)?;
-    let idx_mode  = reader.get_bit().ok_or_else(to_error)?;
+    let idx_mode = reader.get_bit().ok_or_else(to_error)?;
 
     let r0 = read_bits!(get_bits_u8, 5)?;
     let r1 = read_bits!(get_bits_u8, 5)?;
 
+    let g0 = read_bits!(get_bits_u8, 5)?;
+    let g1 = read_bits!(get_bits_u8, 5)?;
 
+    let b0 = read_bits!(get_bits_u8, 5)?;
+    let b1 = read_bits!(get_bits_u8, 5)?;
+
+    let a0 = read_bits!(get_bits_u8, 6)?;
+    let a1 = read_bits!(get_bits_u8, 6)?;
 
     Ok(())
 }
@@ -385,8 +390,5 @@ mod test {
     #[test]
     fn file_read() {
         let file = include_bytes!("../tests/files/is_fireball.dds");
-
-        // let dds = Dds::read(file.as_slice()).unwrap();
-        // panic!("{dds:#?}")
     }
 }
