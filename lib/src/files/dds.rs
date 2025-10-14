@@ -344,35 +344,68 @@ impl Dds {
     }
 }
 
+fn to_error() -> Error {
+    Error::ParseError("DDS: Unexpected EOF".to_string())
+}
+
+fn get_bits_u8(reader: &mut BitReader, bits: u8) -> Result<u8, Error> {
+    reader.get_bits_u8(bits)
+        .ok_or_else(to_error)
+}
+
+fn get_bits_u32(reader: &mut BitReader, bits: u8) -> Result<u32, Error> {
+    reader.get_bits_u32(bits)
+        .ok_or_else(to_error)
+}
+
+fn get_bits_u64(reader: &mut BitReader, bits: u8) -> Result<u64, Error> {
+    reader.get_bits_u64(bits)
+        .ok_or_else(to_error)
+}
+
 fn read_block(reader: &mut BitReader) -> Result<(), Error> {
     let mode = get_mode(reader);
-    assert_eq!(mode, 4);
-
-    let to_error = || Error::ParseError("DDS: Unexpected EOF".to_string());
-
-    macro_rules! read_bits {
-        ($f: ident, $bits: expr) => {{ reader.$f($bits).ok_or_else(to_error) }};
-    }
-
-    let rotation = read_bits!(get_bits_u8, 2)?;
-    let idx_mode = reader.get_bit().ok_or_else(to_error)?;
-
-    let r0 = read_bits!(get_bits_u8, 5)?;
-    let r1 = read_bits!(get_bits_u8, 5)?;
-
-    let g0 = read_bits!(get_bits_u8, 5)?;
-    let g1 = read_bits!(get_bits_u8, 5)?;
-
-    let b0 = read_bits!(get_bits_u8, 5)?;
-    let b1 = read_bits!(get_bits_u8, 5)?;
-
-    let a0 = read_bits!(get_bits_u8, 6)?;
-    let a1 = read_bits!(get_bits_u8, 6)?;
+    assert_eq!(mode, FormatMode::Mode4);
 
     Ok(())
 }
 
-fn get_mode(reader: &mut BitReader) -> u8 {
+fn read_mode_4(reader: &mut BitReader) -> Result<(), Error> {
+    let rotation = get_bits_u8(reader, 2)?;
+    let idx_mode = reader.get_bit().ok_or_else(to_error)?;
+
+    let r0 = get_bits_u8(reader, 5)?;
+    let r1 = get_bits_u8(reader, 5)?;
+
+    let g0 = get_bits_u8(reader, 5)?;
+    let g1 = get_bits_u8(reader, 5)?;
+
+    let b0 = get_bits_u8(reader, 5)?;
+    let b1 = get_bits_u8(reader, 5)?;
+
+    let a0 = get_bits_u8(reader, 6)?;
+    let a1 = get_bits_u8(reader, 6)?;
+
+    let index1 = get_bits_u32(reader, 31)?;
+    let index2 = get_bits_u64(reader, 47)?;
+
+    Ok(())
+}
+
+crate::int_enum! {
+    enum FormatMode: u8 {
+        Mode0 = 0,
+        Mode1 = 1,
+        Mode2 = 2,
+        Mode3 = 3,
+        Mode4 = 4,
+        Mode5 = 5,
+        Mode6 = 6,
+        Mode7 = 7,
+    }
+}
+
+fn get_mode(reader: &mut BitReader) -> FormatMode {
     let mut mode = 0;
     while let Some(bit) = reader.get_bit()
         && bit != 1
@@ -380,7 +413,7 @@ fn get_mode(reader: &mut BitReader) -> u8 {
         mode += 1;
     }
 
-    mode
+    FormatMode::try_from(mode).unwrap()
 }
 
 #[cfg(test)]
