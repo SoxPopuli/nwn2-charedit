@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-nwn_lib::open_enum! {
+common::open_enum! {
     pub enum Class: i32 {
         Barbarian = 0,
         Bard = 1,

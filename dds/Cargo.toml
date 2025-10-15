@@ -1,0 +1,14 @@
+[package]
+name = "dds"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+common = { path = "../common" }
+rust-utils.workspace = true
+
+[build-dependencies]
+cc = "1.2.41"
+
+[dev-dependencies]
+png = "0.18.0"

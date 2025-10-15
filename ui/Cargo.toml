@@ -8,5 +8,6 @@ iced = { version = "0.13.1", features = ["advanced", "image"] }
 iced_aw = { version = "0.12.2", features = ["menu"] }
 rfd = "0.15.4"
 nwn_lib = { path = "../lib", package = "nwn2-charedit-lib" }
+common = { path = "../common" }
 zip = { version = "6.0.0", features = ["deflate"] }
 paste.workspace = true

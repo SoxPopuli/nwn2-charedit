@@ -1,12 +1,14 @@
 [workspace]
 resolver = "3"
-members = [
-    "lib",
-    "ui",
-]
+members = ["common", "lib", "ui"]
 
 package.version = "0.1.0"
 package.edition = "2024"
 
 [workspace.dependencies]
 paste = "1.0.15"
+rust-utils = { git = "https://github.com/SoxPopuli/rust-utils.git", tag = "v2.0.0", features = [
+    "vec2d",
+    "byte_readers",
+    "bit_reader",
+] }

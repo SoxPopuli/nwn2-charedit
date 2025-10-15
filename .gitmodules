@@ -1,0 +1,3 @@
+[submodule "dds/bc7enc_rdo"]
+	path = dds/bc7enc_rdo
+	url = https://github.com/richgel999/bc7enc_rdo.git

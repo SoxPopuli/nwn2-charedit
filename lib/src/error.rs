@@ -38,6 +38,15 @@ impl From<ParseFloatError> for Error {
     }
 }
 
+impl From<common::error::EnumError> for Error {
+    fn from(value: common::error::EnumError) -> Self {
+        Self::EnumError {
+            enum_type: value.enum_type,
+            msg: value.msg,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FileError {
     pub file: String,
