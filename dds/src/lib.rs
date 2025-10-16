@@ -307,6 +307,16 @@ pub struct Rgba {
     pub b: u8,
     pub a: u8,
 }
+impl Rgba {
+    pub const fn zero() -> Self {
+        Self {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
+        }
+    }
+}
 
 mod ffi {
     use std::ffi::{c_int, c_void};
@@ -362,7 +372,8 @@ impl Dds {
         }?;
         let mut data_ptr = data.as_ptr();
 
-        let mut pixels = vec![Rgba::default(); header.width as usize * header.height as usize];
+        let mut pixels =
+            vec![const { Rgba::zero() }; header.width as usize * header.height as usize];
         let pixels_ptr = pixels.as_mut_ptr();
 
         let w = header.width;

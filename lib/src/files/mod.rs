@@ -1,4 +1,3 @@
-pub mod dds;
 pub mod gff;
 pub mod offset;
 pub mod res_ref;
