@@ -1,7 +1,7 @@
 fn main() {
     cc::Build::new()
-        .flag("-Wno-everything")
-        .file("./bcdec/test.c")
+        .warnings(false)
+        .file("bcdec.c")
         .include("./bcdec/")
         .compile("bcdec");
 }

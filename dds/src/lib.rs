@@ -413,6 +413,7 @@ mod test {
 
         {
             let out_file = BufWriter::new(Vec::new());
+            // let out_file = std::fs::File::create("fireball.png").unwrap();
             let mut encoder = png::Encoder::new(out_file, dds.header.width, dds.header.height);
 
             let pixel_ptr = unsafe {
