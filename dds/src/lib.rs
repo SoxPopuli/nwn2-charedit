@@ -309,11 +309,22 @@ pub struct Rgba {
 }
 
 mod ffi {
-    use super::Rgba;
-    use std::ffi::c_void;
+    use std::ffi::{c_int, c_void};
 
     unsafe extern "C" {
-        pub unsafe fn unpack_bc7(block_ptr: *const c_void, pixel_ptr: *mut Rgba) -> bool;
+        // pub unsafe fn load_dds(
+        //     file_path: *const c_char,
+        //     width: *mut c_int,
+        //     height: *mut c_int,
+        //     four_cc: *mut c_uint,
+        //     compressed_data: *const *const c_void,
+        // );
+
+        pub unsafe fn bcdec_bc7(
+            compressed_block: *const c_void,
+            decompressed_block: *mut c_void,
+            destination_pitch: c_int,
+        );
     }
 }
 
@@ -340,39 +351,33 @@ impl Dds {
             None
         };
 
+        assert_eq!(
+            header_extra.as_ref().map(|x| x.dxgi_format),
+            Some(DXGIFormat::BC7_UNORM)
+        );
+
         let data = {
             let mut buf = Vec::new();
             reader.read_to_end(&mut buf).map(|_| buf)
         }?;
-        let data_ptr = data.as_ptr();
-
-        let mut block_idx = 0;
-        let block_ptrs = std::iter::from_fn(move || {
-            let ptr = unsafe { data_ptr.add(128 * block_idx) };
-            block_idx += 1;
-            if ptr.addr() >= data_ptr.addr() + data.len() {
-                None
-            } else {
-                Some(ptr)
-            }
-        });
+        let mut data_ptr = data.as_ptr();
 
         let mut pixels = vec![Rgba::default(); header.width as usize * header.height as usize];
         let pixels_ptr = pixels.as_mut_ptr();
 
+        let w = header.width;
+        let h = header.height;
+
         unsafe {
-            block_ptrs.enumerate().for_each(|(i, block_ptr)| {
-                let first_empty = pixels.iter()
-                    .enumerate()
-                    .find(|x| *x.1 == Rgba::default())
-                    .map(|(i, _)| i)
-                    .unwrap();
+            for i in (0..h).step_by(4) {
+                for j in (0..w).step_by(4) {
+                    let dst: *mut u8 = pixels_ptr.cast();
+                    let dst = dst.add((i as usize * w as usize + j as usize) * 4);
 
-                let pixel_ptr = pixels_ptr.add(first_empty);
-                ffi::unpack_bc7(block_ptr.cast(), pixel_ptr);
-            });
-
-            // ffi::unpack_bc7(data_ptr.cast(), pixels_ptr)
+                    ffi::bcdec_bc7(data_ptr.cast(), dst.cast(), w as i32 * 4);
+                    data_ptr = data_ptr.add(16);
+                }
+            }
         };
 
         Ok(Self {
@@ -384,12 +389,10 @@ impl Dds {
     }
 }
 
-pub fn decode() {}
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io::{BufReader, Cursor};
+    use std::io::{BufReader, BufWriter, Cursor};
 
     #[test]
     fn file_read() {
@@ -397,6 +400,20 @@ mod test {
         let file = BufReader::new(Cursor::new(file));
         let dds = Dds::read(file).unwrap();
 
-        // panic!("{:?}", dds.pixels);
+        {
+            let out_file = BufWriter::new(Vec::new());
+            let mut encoder = png::Encoder::new(out_file, dds.header.width, dds.header.height);
+
+            let pixel_ptr = unsafe {
+                std::slice::from_raw_parts(dds.pixels.as_ptr().cast(), dds.pixels.len() * 4)
+            };
+
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+
+            let mut encoder = encoder.write_header().unwrap();
+            encoder.write_image_data(pixel_ptr).unwrap();
+            encoder.finish().unwrap();
+        }
     }
 }
