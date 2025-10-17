@@ -1,14 +1,11 @@
-pub mod dds;
 pub mod gff;
 pub mod offset;
 pub mod res_ref;
 pub mod tlk;
 pub mod two_da;
 
-use crate::{
-    error::{Error, IntoError},
-    int_enum,
-};
+use crate::error::{Error, IntoError};
+use common::int_enum;
 pub use offset::Offset;
 use rust_utils::byte_readers::FromBytes;
 use std::io::{Read, Write};

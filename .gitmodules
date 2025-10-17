@@ -1,0 +1,3 @@
+[submodule "dds/bcdec"]
+	path = dds/bcdec
+	url = https://github.com/iOrange/bcdec.git

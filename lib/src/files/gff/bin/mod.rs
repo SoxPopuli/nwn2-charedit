@@ -1,3 +1,4 @@
+use common::int_enum;
 use super::{
     Header,
     label::{LABEL_SIZE, Label},
@@ -16,7 +17,6 @@ use crate::{
         tlk::Tlk,
         write_all,
     },
-    int_enum,
 };
 use rust_utils::collect_vec::CollectVecResult;
 use std::{

@@ -1,15 +1,14 @@
 [package]
-name = "nwn2-charedit-lib"
+name = "dds"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 common = { path = "../common" }
-roxmltree = "0.21.0"
 rust-utils.workspace = true
-encoding_rs = "0.8.34"
-flate2 = "1.0.34"
-paste.workspace = true
+
+[build-dependencies]
+cc = "1.2.41"
 
 [dev-dependencies]
-pretty_assertions = "1.4.1"
+png = "0.18.0"
