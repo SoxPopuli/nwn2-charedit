@@ -418,10 +418,12 @@ impl App {
             }
             Message::OpenSettings => {
                 self.settings.active = true;
+                self.select_file.active = false;
             }
             Message::OpenFileSelector => {
                 if let Some(dir) = &self.settings.save_dir {
                     self.select_file.open(dir);
+                    self.settings.close();
                 } else {
                     rfd::MessageDialog::new()
                         .set_level(rfd::MessageLevel::Info)

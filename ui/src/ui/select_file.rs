@@ -1,13 +1,17 @@
 use crate::error::Error;
 use iced::{
     Length,
-    widget::{Column, button, column, horizontal_space, row, text},
+    widget::{Column, button, column, container, horizontal_space, row, text, vertical_space},
 };
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
-    SetSaveDir(PathBuf),
+    Close,
+    Open(usize),
+    MouseEntered(usize),
+    MouseExited(usize),
+    EntrySelected(usize),
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -120,6 +124,8 @@ impl Ord for SaveEntry {
 #[derive(Debug, Default)]
 pub struct State {
     pub active: bool,
+    hovered_entry: Option<usize>,
+    selected_entry: Option<usize>,
     save_entries: Vec<SaveEntry>,
 }
 impl State {
@@ -134,9 +140,27 @@ impl State {
 
     pub fn close(&mut self) {
         self.active = false;
+        self.selected_entry = None;
     }
 
-    pub fn update(&mut self, msg: Message) {}
+    pub fn update(&mut self, msg: Message) {
+        match msg {
+            Message::Close => self.close(),
+            Message::MouseEntered(idx) => {
+                self.hovered_entry = Some(idx);
+            }
+            Message::MouseExited(idx) => {
+                if Some(idx) == self.hovered_entry {
+                    self.hovered_entry = None;
+                }
+            }
+            Message::EntrySelected(idx) => {
+                self.selected_entry = Some(idx);
+            }
+            Message::Open(idx) => {
+            }
+        }
+    }
 
     fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
         // 000003 - 06-10-2025-17-49
@@ -179,37 +203,66 @@ impl State {
         Ok(entries)
     }
 
+    fn view_save_entry(&self, index: usize, entry: &SaveEntry) -> Element<'_> {
+        let image = iced::widget::image(entry.image.clone())
+            .width(iced::Length::Fixed(240.0))
+            .height(iced::Length::Fixed(120.0))
+            .content_fit(iced::ContentFit::Contain);
+        let label = text(format!(
+            "{} - {} - {}",
+            entry.number,
+            entry.name,
+            entry.date.pretty_string()
+        ));
+
+        let items = row![image, label].width(Length::Fill).padding(8.0);
+        let items = iced::widget::mouse_area(items)
+            .on_enter(Message::MouseEntered(index))
+            .on_exit(Message::MouseExited(index))
+            .on_press(Message::EntrySelected(index));
+
+        container(items)
+            .style(move |theme: &iced::Theme| {
+                let p = theme.extended_palette();
+                container::Style {
+                    background: if self.selected_entry == Some(index) {
+                        Some(iced::Background::Color(p.primary.strong.color))
+                    } else if self.hovered_entry == Some(index) {
+                        Some(iced::Background::Color(p.background.strong.color))
+                    } else {
+                        None
+                    },
+                    ..Default::default()
+                }
+            })
+            .into()
+    }
+
     pub fn view(&self) -> Element<'_> {
-        fn view_save_entry(entry: &SaveEntry) -> Element<'_> {
-            let image = iced::widget::image(entry.image.clone())
-                .width(iced::Length::Fixed(240.0))
-                .height(iced::Length::Fixed(120.0))
-                .content_fit(iced::ContentFit::Contain);
-            let label = text(format!(
-                "{} - {} - {}",
-                entry.number,
-                entry.name,
-                entry.date.pretty_string()
-            ));
-
-            row![image, label].into()
-        }
-
-        let entries = self.save_entries.iter().map(view_save_entry);
+        let entries = self
+            .save_entries
+            .iter()
+            .enumerate()
+            .map(|(i, x)| self.view_save_entry(i, x));
 
         let body = Column::from_iter(entries).spacing(16.0);
         let body = iced::widget::scrollable(body)
             .width(Length::Fill)
-            .height(Length::Shrink);
+            .height(Length::Fill);
 
         let body = column![
             body,
+            vertical_space().height(8),
             row![
                 horizontal_space().width(Length::Fill),
-                button("Close"),
-                button("Open"),
+                button("Close").on_press(Message::Close),
+                button("Open").on_press_maybe(match self.selected_entry {
+                    Some(i) => Some(Message::Open(i)),
+                    None => None,
+                }),
             ]
-            .spacing(16)
+            .height(Length::Fixed(32.0))
+            .spacing(16),
         ];
 
         super::bordered(body.into())

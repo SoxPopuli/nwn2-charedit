@@ -134,7 +134,7 @@ impl State {
         self.game_dir.is_none() || self.save_dir.is_none()
     }
 
-    fn close(&mut self) {
+    pub fn close(&mut self) {
         self.active = false;
         self.game_dir_temp = path_to_string(&self.game_dir);
         self.save_dir_temp = path_to_string(&self.save_dir);
@@ -217,6 +217,7 @@ impl State {
                 button("Close").on_press(Message::Close),
                 button("Save").on_press(Message::Save),
             ]
+            .height(Length::Fixed(32.0))
             .spacing(16),
         ]
         .spacing(8);
