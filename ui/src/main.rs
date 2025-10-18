@@ -15,7 +15,7 @@ use nwn_lib::files::gff::{
 };
 use std::{
     fs::File,
-    io::Read,
+    io::{BufReader, Read},
     path::{Path, PathBuf},
 };
 
@@ -249,7 +249,7 @@ impl PlayerBuilder {
     }
 }
 
-type Tlk = nwn_lib::files::tlk::Tlk<File>;
+type Tlk = nwn_lib::files::tlk::Tlk<BufReader<File>>;
 
 fn get_race_name_from_id(
     tlk: &Tlk,
@@ -378,6 +378,43 @@ impl SaveFile {
     }
 }
 
+pub fn show_error_popup(msg: impl Into<String>) {
+    rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title("Error")
+        .set_description(msg)
+        .show();
+}
+
+fn show_error_popup_task(msg: impl Into<String>) -> iced::Task<Message> {
+    show_error_popup(msg);
+    Task::none()
+}
+
+fn get_tlk_file(game_dir: &Path) -> Result<Tlk, Error> {
+    let mut read_dir = game_dir.read_dir()?;
+
+    let file_path = read_dir.find_map(|x| {
+        if let Ok(dir) = x
+            && let Ok(m) = dir.metadata()
+            && m.is_file()
+            && dir.file_name().eq_ignore_ascii_case("dialog.tlk")
+        {
+            return Some(dir.path());
+        }
+
+        None
+    });
+
+    match file_path {
+        Some(p) => {
+            let f = File::open(p)?;
+            Tlk::read(BufReader::new(f)).map_err(Error::LibError)
+        }
+        None => Err(Error::MissingDialogFile),
+    }
+}
+
 #[derive(Debug, Default)]
 struct App {
     save_file: Option<SaveFile>,
@@ -408,10 +445,18 @@ impl App {
             }
 
             Message::FileSelected(path) => {
-                let save =
-                    open_file(&path).unwrap_or_else(|e| panic!("Failed to open save file: {e}"));
+                match open_file(&path) {
+                    Ok(save) => {
+                        let tlk = match self.settings.game_dir.as_deref().map(get_tlk_file) {
+                            Some(Ok(file)) => file,
+                            Some(Err(e)) => return show_error_popup_task(e.to_string()),
+                            None => return show_error_popup_task("Game Directory not set"),
+                        };
 
-                // self.save_file = Some(SaveFile::new(save));
+                        self.save_file = Some(SaveFile::new(save, tlk))
+                    }
+                    Err(e) => show_error_popup(format!("Failed to open save file: {e}")),
+                }
             }
             Message::Settings(m) => {
                 self.settings.update(m);
@@ -432,7 +477,7 @@ impl App {
                 }
             }
             Message::FileSelector(m) => {
-                self.select_file.update(m);
+                return self.select_file.update(m);
             }
         }
 

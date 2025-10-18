@@ -1,6 +1,6 @@
 use crate::error::Error;
 use iced::{
-    Length,
+    Length, Task,
     widget::{Column, button, column, container, horizontal_space, row, text, vertical_space},
 };
 use std::path::{Path, PathBuf};
@@ -143,7 +143,7 @@ impl State {
         self.selected_entry = None;
     }
 
-    pub fn update(&mut self, msg: Message) {
+    pub fn update(&mut self, msg: Message) -> iced::Task<crate::Message> {
         match msg {
             Message::Close => self.close(),
             Message::MouseEntered(idx) => {
@@ -158,8 +158,20 @@ impl State {
                 self.selected_entry = Some(idx);
             }
             Message::Open(idx) => {
+                if let Some(entry) = self.save_entries.get(idx) {
+                    let mut file_path = entry.path.join("resgff.zip");
+                    if !file_path.exists() {
+                        file_path = entry.path.join("playerlist.ifo");
+                    }
+
+                    let selected_task = Task::done(crate::Message::FileSelected(file_path));
+                    let close_task = Task::done(crate::Message::FileSelector(Message::Close));
+                    return selected_task.chain(close_task);
+                }
             }
-        }
+        };
+
+        Task::none()
     }
 
     fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {

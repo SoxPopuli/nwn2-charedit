@@ -9,6 +9,7 @@ pub enum Error {
         var: &'static str,
     },
     MissingGamePath(PathBuf),
+    MissingDialogFile,
     Io(std::io::ErrorKind),
     LibError(nwn_lib::error::Error),
     LockError(String),
@@ -21,7 +22,10 @@ pub enum Error {
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        match self {
+            Self::MissingDialogFile => write!(f, "Couldn't find dialog.tlk in game directory"),
+            x => write!(f, "{:?}", x),
+        }
     }
 }
 impl std::error::Error for Error {}
