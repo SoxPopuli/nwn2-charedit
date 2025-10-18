@@ -1,10 +1,12 @@
 mod error;
 mod ids;
+mod two_d_array;
+mod ui;
 
-use crate::error::Error;
+use crate::{error::Error, ui::settings::Message as SettingsMessage};
 use iced::{
     Task,
-    widget::{button, column, row, text},
+    widget::{Column, button, column, row, text},
 };
 use nwn_lib::files::gff::{
     Gff,
@@ -50,6 +52,10 @@ enum Message {
     NoMsg,
     OpenFileDialog,
     FileSelected(PathBuf),
+    Settings(SettingsMessage),
+    OpenSettings,
+    OpenFileSelector,
+    FileSelector(ui::select_file::Message),
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -88,12 +94,15 @@ pub struct FieldRef<T> {
     value: T,
 }
 impl<T> FieldRef<T> {
-    pub fn new(
+    pub fn new<E>(
         field: StructField,
-        expect_fn: impl FnOnce(&Field) -> Result<T, nwn_lib::error::Error>,
-    ) -> Result<Self, Error> {
+        expect_fn: impl FnOnce(&Field) -> Result<T, E>,
+    ) -> Result<Self, Error>
+    where
+        E: Into<Error>,
+    {
         let lock = field.read()?;
-        let value = expect_fn(&lock.field)?;
+        let value = expect_fn(&lock.field).map_err(|e| e.into())?;
         drop(lock);
 
         Ok(Self {
@@ -158,9 +167,16 @@ pub struct Attributes {
 }
 
 #[derive(Debug, Clone)]
+pub struct Race {
+    pub race: String,
+    pub subrace: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Player {
     pub first_name: FieldRef<String>,
     pub last_name: FieldRef<String>,
+    pub race: Race,
     pub attributes: Attributes,
     pub alignment: Alignment,
 }
@@ -185,6 +201,8 @@ make_builder! {
     struct PlayerBuilder {
         first_name: FieldRef<String>,
         last_name: FieldRef<String>,
+        race: FieldRef<String>,
+        subrace: FieldRef<String>,
         str: FieldRef<u8>,
         dex: FieldRef<u8>,
         con: FieldRef<u8>,
@@ -211,6 +229,10 @@ impl PlayerBuilder {
         Ok(Player {
             first_name: unwrap_field!(first_name),
             last_name: unwrap_field!(last_name),
+            race: Race {
+                race: unwrap_field!(race).value,
+                subrace: self.subrace.map(|x| x.value),
+            },
             attributes: Attributes {
                 str: unwrap_field!(str),
                 dex: unwrap_field!(dex),
@@ -227,9 +249,47 @@ impl PlayerBuilder {
     }
 }
 
+type Tlk = nwn_lib::files::tlk::Tlk<File>;
+
+fn get_race_name_from_id(
+    tlk: &Tlk,
+    reader: &mut two_d_array::FileReader,
+    field: &Field,
+) -> Result<String, Error> {
+    let file_name = "racialtypes.2da";
+    let table = reader.read(file_name)?;
+    let race_id = field.expect_byte()?;
+    let name_idx = table
+        .find_column_index("Name")
+        .ok_or(Error::MissingField(format!(
+            "Missing 'Name' field in {file_name}"
+        )))?;
+
+    let s_ref = table.data[(name_idx, race_id as usize)]
+        .clone()
+        .ok_or(Error::MissingField(format!(
+            "Missing race name in {file_name} for {race_id}"
+        )))?;
+
+    let x = tlk
+        .get_from_str_ref(
+            s_ref
+                .parse()
+                .map_err(|e: std::num::ParseIntError| Error::MissingField(e.to_string()))?,
+        )
+        .map_err(Error::LibError)
+        .and_then(|x| x.ok_or(Error::MissingField("Missing race name str_ref".into())))?;
+
+    Ok(x.to_string())
+}
+
 impl Player {
-    pub fn new(player_struct: &Struct) -> Result<Self, Error> {
-        let read_name = |field: &Field| {
+    pub fn new(
+        tlk: &Tlk,
+        data_reader: &mut two_d_array::FileReader,
+        player_struct: &Struct,
+    ) -> Result<Self, Error> {
+        let read_name = |field: &Field| -> Result<String, Error> {
             let s = field.expect_exolocstring()?;
             Ok(s.substrings
                 .iter()
@@ -243,37 +303,27 @@ impl Player {
             let lock = field.read()?;
             let label = &lock.label;
 
+            macro_rules! read_field {
+                ($builder_fn:ident, $expect_fn:expr) => {{ player_builder.$builder_fn(FieldRef::new(field.clone(), $expect_fn)?) }};
+            }
+
             match label.as_str() {
-                "FirstName" => {
-                    player_builder.first_name(FieldRef::new(field.clone(), read_name)?);
-                }
-                "LastName" => {
-                    player_builder.last_name(FieldRef::new(field.clone(), read_name)?);
-                }
-                "Str" => {
-                    player_builder.str(FieldRef::new(field.clone(), Field::expect_byte)?);
-                }
-                "Dex" => {
-                    player_builder.dex(FieldRef::new(field.clone(), Field::expect_byte)?);
-                }
-                "Con" => {
-                    player_builder.con(FieldRef::new(field.clone(), Field::expect_byte)?);
-                }
-                "Int" => {
-                    player_builder.int(FieldRef::new(field.clone(), Field::expect_byte)?);
-                }
-                "Wis" => {
-                    player_builder.wis(FieldRef::new(field.clone(), Field::expect_byte)?);
-                }
-                "Cha" => {
-                    player_builder.cha(FieldRef::new(field.clone(), Field::expect_byte)?);
-                }
-                "GoodEvil" => {
-                    player_builder.good_evil(FieldRef::new(field.clone(), Field::expect_byte)?);
-                }
-                "LawfulChaotic" => {
-                    player_builder
-                        .lawful_chaotic(FieldRef::new(field.clone(), Field::expect_byte)?);
+                "FirstName" => read_field!(first_name, read_name),
+                "LastName" => read_field!(last_name, read_name),
+                "Race" => read_field!(race, |f| get_race_name_from_id(tlk, data_reader, f)),
+                "Gender" => {}
+                "Subrace" => {}
+                "Str" => read_field!(str, Field::expect_byte),
+                "Dex" => read_field!(dex, Field::expect_byte),
+                "Con" => read_field!(con, Field::expect_byte),
+                "Int" => read_field!(int, Field::expect_byte),
+                "Wis" => read_field!(wis, Field::expect_byte),
+                "Cha" => read_field!(cha, Field::expect_byte),
+                "GoodEvil" => read_field!(good_evil, Field::expect_byte),
+                "LawfulChaotic" => read_field!(lawful_chaotic, Field::expect_byte),
+                "LvlStatList" => {
+                    // let lock = field.read().unwrap();
+                    // let s = lock.field.expect_list().unwrap();
                 }
 
                 _ => {}
@@ -287,10 +337,12 @@ impl Player {
 #[derive(Debug)]
 pub struct SaveFile {
     file: Gff,
+    tlk: Tlk,
     players: Vec<Player>,
+    data_reader: two_d_array::FileReader,
 }
 impl SaveFile {
-    pub fn new(file: Gff) -> Self {
+    pub fn new(file: Gff, tlk: Tlk) -> Self {
         let player_list = file
             .root
             .bfs_iter()
@@ -302,13 +354,20 @@ impl SaveFile {
             lock.field.expect_list().cloned().unwrap()
         };
 
+        let mut reader = two_d_array::FileReader::new().expect("Failed to create 2da reader");
+
         let players: Vec<Player> = player_list
             .iter()
-            .map(Player::new)
+            .map(|x| Player::new(&tlk, &mut reader, x))
             .map_while(Result::ok)
             .collect();
 
-        Self { file, players }
+        Self {
+            file,
+            tlk,
+            players,
+            data_reader: reader,
+        }
     }
 
     pub fn save_changes<W>(&mut self, output: &mut W) -> Result<(), Error>
@@ -322,6 +381,8 @@ impl SaveFile {
 #[derive(Debug, Default)]
 struct App {
     save_file: Option<SaveFile>,
+    settings: ui::settings::State,
+    select_file: ui::select_file::State,
 }
 impl App {
     fn title() -> &'static str {
@@ -334,16 +395,15 @@ impl App {
 
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
-            Message::NoMsg => Task::none(),
+            Message::NoMsg => {}
             Message::OpenFileDialog => {
                 let file = rfd::FileDialog::new()
                     .set_title("Open save file")
                     .add_filter("Save File (gffres.zip, playerlist.ifo)", &["zip", "ifo"])
                     .pick_file();
 
-                match file {
-                    Some(path) => Task::done(Message::FileSelected(path)),
-                    None => Task::none(),
+                if let Some(path) = file {
+                    return Task::done(Message::FileSelected(path));
                 }
             }
 
@@ -351,33 +411,39 @@ impl App {
                 let save =
                     open_file(&path).unwrap_or_else(|e| panic!("Failed to open save file: {e}"));
 
-                self.save_file = Some(SaveFile::new(save));
-
-                Task::none()
+                // self.save_file = Some(SaveFile::new(save));
+            }
+            Message::Settings(m) => {
+                self.settings.update(m);
+            }
+            Message::OpenSettings => {
+                self.settings.active = true;
+            }
+            Message::OpenFileSelector => {
+                if let Some(dir) = &self.settings.save_dir {
+                    self.select_file.open(dir);
+                } else {
+                    rfd::MessageDialog::new()
+                        .set_level(rfd::MessageLevel::Info)
+                        .set_description("Save directory not set")
+                        .show();
+                }
+            }
+            Message::FileSelector(m) => {
+                self.select_file.update(m);
             }
         }
+
+        Task::none()
     }
 
     fn menu(&self) -> Element<'_> {
-        use iced_aw::menu::{Item, Menu};
-        use iced_aw::{menu_bar, menu_items};
+        let settings = menu_button("Settings").on_press(Message::OpenSettings);
 
-        let menu_template = |items| Menu::new(items).max_width(80.0).offset(6.0);
+        let open_file = menu_button("Open").on_press(Message::OpenFileSelector);
+        let menu_bar = row![open_file, settings].spacing(8);
 
-        macro_rules! menu {
-            ($($x:tt)+) => {
-                menu_template(menu_items!( $($x)+ ))
-            };
-        }
-
-        let menu_bar = menu_bar!((
-            menu_button("File").on_press(Message::NoMsg),
-            menu!((menu_button("Open").on_press(Message::OpenFileDialog))(
-                menu_button("Save")
-            ))
-        ));
-
-        column![menu_bar, iced::widget::horizontal_rule(4),]
+        column![menu_bar, iced::widget::horizontal_rule(4)]
             .spacing(4)
             .padding(iced::Padding {
                 top: 4.0,
@@ -415,10 +481,18 @@ impl App {
             None => Vec::new(),
         };
 
-        let body = iced::widget::Column::with_children(names).padding(iced::Padding {
-            top: 0.0,
-            ..(16.0).into()
-        });
+        let body = if self.settings.active {
+            self.settings.view().map(Message::Settings)
+        } else if self.select_file.active {
+            self.select_file.view().map(Message::FileSelector)
+        } else {
+            Column::with_children(names)
+                .padding(iced::Padding {
+                    top: 0.0,
+                    ..(16.0).into()
+                })
+                .into()
+        };
 
         column![self.menu(), body].into()
     }

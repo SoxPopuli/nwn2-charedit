@@ -1,8 +1,10 @@
-use std::sync::PoisonError;
+use std::{path::PathBuf, sync::PoisonError};
 
 #[derive(Debug, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    MissingGamePath(PathBuf),
+    Io(std::io::ErrorKind),
     LibError(nwn_lib::error::Error),
     LockError(String),
     FieldExpectError {
@@ -10,6 +12,7 @@ pub enum Error {
         error: nwn_lib::error::Error,
     },
     MissingField(String),
+    ParseError(String),
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -25,5 +28,10 @@ impl From<nwn_lib::error::Error> for Error {
 impl<T> From<PoisonError<T>> for Error {
     fn from(value: PoisonError<T>) -> Self {
         Self::LockError(value.to_string())
+    }
+}
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value.kind())
     }
 }

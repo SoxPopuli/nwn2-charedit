@@ -11,6 +11,10 @@ pub enum Error {
         enum_type: &'static str,
         msg: String,
     },
+    ColumnMismatch {
+        column1: Vec<String>,
+        column2: Vec<String>,
+    }
 }
 
 impl std::fmt::Display for Error {

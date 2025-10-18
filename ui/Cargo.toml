@@ -6,9 +6,12 @@ edition.workspace = true
 [dependencies]
 iced = { version = "0.13.1", features = ["advanced", "image"] }
 iced_aw = { version = "0.12.2", features = ["menu"] }
+image = { version = "0.25.8", features = ["tga"] }
 rfd = "0.15.4"
 nwn_lib = { path = "../lib", package = "nwn2-charedit-lib" }
 common = { path = "../common" }
 dds = { path = "../dds" }
 zip = { version = "6.0.0", features = ["deflate"] }
 paste.workspace = true
+cfg-if = "1.0.4"
+regex = "1.12.2"

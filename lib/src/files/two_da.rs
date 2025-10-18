@@ -8,7 +8,7 @@
 
 use std::io::Read;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct DataTable {
     pub columns: Vec<String>,
     pub data: Vec2d<Option<String>>,
