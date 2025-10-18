@@ -1,5 +1,8 @@
 use crate::error::Error;
-use iced::widget::{Column, column, row, text};
+use iced::{
+    Length,
+    widget::{Column, button, column, horizontal_space, row, text},
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,7 +198,19 @@ impl State {
         let entries = self.save_entries.iter().map(view_save_entry);
 
         let body = Column::from_iter(entries).spacing(16.0);
-        let body = iced::widget::scrollable(body).width(iced::Length::Fill);
+        let body = iced::widget::scrollable(body)
+            .width(Length::Fill)
+            .height(Length::Shrink);
+
+        let body = column![
+            body,
+            row![
+                horizontal_space().width(Length::Fill),
+                button("Close"),
+                button("Open"),
+            ]
+            .spacing(16)
+        ];
 
         super::bordered(body.into())
     }

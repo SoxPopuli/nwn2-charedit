@@ -1,9 +1,11 @@
-use std::path::{Path, PathBuf};
-
+use crate::error::Error;
+use cfg_if::cfg_if;
 use iced::{
     Length,
     widget::{button, column, horizontal_space, row, text, text_input, vertical_space},
 };
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PickDirMode {
@@ -22,7 +24,82 @@ pub enum Message {
 
 type Element<'a> = iced::Element<'a, Message>;
 
-#[derive(Debug, Default)]
+fn get_cache_dir() -> Result<PathBuf, Error> {
+    fn get_var(var: &'static str) -> Result<String, Error> {
+        std::env::var(var).map_err(|_| Error::EnvNotFound { var })
+    }
+
+    let base_dir = {
+        cfg_if! {
+            if #[cfg(target_os = "windows")] {
+                get_var("LOCALAPPDATA").map(PathBuf::from)
+            } else if #[cfg(target_os = "macos")] {
+                get_var("HOME")
+                    .map(|s| PathBuf::from(s)
+                        .join("Library")
+                        .join("Caches")
+                )
+            } else if #[cfg(target_os = "linux")] {
+                    std::env::var("XDG_CACHE_HOME")
+                    .map(PathBuf::from)
+                    .or_else(|_|
+                        Ok::<_, Error>(Path::new(&get_var("HOME")?)
+                        .join(".cache"))
+                    )
+            } else {
+                compile_error!("target os not supported")
+            }
+        }
+    }?;
+
+    let dir = base_dir.join("nwn2-charedit");
+
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir)
+            .unwrap_or_else(|e| panic!("Failed to create dir {}: {e}", dir.display()));
+    }
+
+    Ok(dir)
+}
+
+fn get_cache_file_path() -> PathBuf {
+    let cache_dir = get_cache_dir().expect("Failed to get cache dir");
+    cache_dir.join("settings.json")
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SavedSettings {
+    save_dir: Option<PathBuf>,
+    game_dir: Option<PathBuf>,
+}
+
+fn save_settings(settings: &State) -> Result<(), Error> {
+    let saved = SavedSettings {
+        save_dir: settings.save_dir.clone(),
+        game_dir: settings.game_dir.clone(),
+    };
+
+    let f = std::fs::File::create(get_cache_file_path())?;
+    let writer = std::io::BufWriter::new(f);
+
+    serde_json::to_writer(writer, &saved).map_err(Error::Serialization)
+}
+
+fn read_settings() -> Result<SavedSettings, Error> {
+    let f = std::fs::File::open(get_cache_file_path())?;
+    let reader = std::io::BufReader::new(f);
+
+    serde_json::from_reader(reader).map_err(Error::Deserialization)
+}
+
+fn path_to_string(path: &Option<PathBuf>) -> String {
+    path.as_deref()
+        .and_then(|x| x.to_str())
+        .map(|x| x.to_string())
+        .unwrap_or_default()
+}
+
+#[derive(Debug)]
 pub struct State {
     pub active: bool,
     pub game_dir: Option<PathBuf>,
@@ -31,19 +108,33 @@ pub struct State {
     game_dir_temp: String,
     save_dir_temp: String,
 }
+impl Default for State {
+    fn default() -> Self {
+        match read_settings() {
+            Ok(settings) => Self {
+                active: false,
+                game_dir_temp: path_to_string(&settings.game_dir),
+                save_dir_temp: path_to_string(&settings.save_dir),
+                game_dir: settings.game_dir,
+                save_dir: settings.save_dir,
+            },
+            Err(_) => Self {
+                active: false,
+                game_dir: None,
+                save_dir: None,
+
+                game_dir_temp: String::new(),
+                save_dir_temp: String::new(),
+            },
+        }
+    }
+}
 impl State {
     pub fn is_unset(&self) -> bool {
         self.game_dir.is_none() || self.save_dir.is_none()
     }
 
     fn close(&mut self) {
-        let path_to_string = |path: &Option<PathBuf>| {
-            path.as_deref()
-                .and_then(|x| x.to_str())
-                .map(|x| x.to_string())
-                .unwrap_or_default()
-        };
-
         self.active = false;
         self.game_dir_temp = path_to_string(&self.game_dir);
         self.save_dir_temp = path_to_string(&self.save_dir);
@@ -93,6 +184,9 @@ impl State {
 
                 set_dir(&mut self.game_dir, &self.game_dir_temp);
                 set_dir(&mut self.save_dir, &self.save_dir_temp);
+
+                save_settings(self).expect("Failed to save settings");
+
                 self.close();
             }
             Message::PickDir(mode) => self.pick_dir(mode),

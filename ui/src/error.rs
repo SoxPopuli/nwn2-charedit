@@ -1,8 +1,13 @@
 use std::{path::PathBuf, sync::PoisonError};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    Serialization(serde_json::Error),
+    Deserialization(serde_json::Error),
+    EnvNotFound {
+        var: &'static str,
+    },
     MissingGamePath(PathBuf),
     Io(std::io::ErrorKind),
     LibError(nwn_lib::error::Error),
