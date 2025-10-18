@@ -3,7 +3,11 @@ mod ids;
 mod two_d_array;
 mod ui;
 
-use crate::{error::Error, ui::settings::Message as SettingsMessage};
+use crate::{
+    error::Error,
+    ids::{class::Class, spell::Spell},
+    ui::settings::Message as SettingsMessage,
+};
 use iced::{
     Task,
     widget::{Column, button, column, row, text},
@@ -14,6 +18,7 @@ use nwn_lib::files::gff::{
     r#struct::{Struct, StructField},
 };
 use std::{
+    fmt::Display,
     fs::File,
     io::{BufReader, Read},
     path::{Path, PathBuf},
@@ -186,6 +191,7 @@ pub struct Player {
     pub last_name: FieldRef<String>,
     pub race: Race,
     pub gender: Gender,
+    pub classes: Vec<PlayerClass>,
     pub attributes: Attributes,
     pub alignment: Alignment,
 }
@@ -220,6 +226,7 @@ make_builder! {
         gender: FieldRef<Gender>,
         race: FieldRef<String>,
         subrace: FieldRef<String>,
+        classes: Vec<PlayerClass>,
         str: FieldRef<u8>,
         dex: FieldRef<u8>,
         con: FieldRef<u8>,
@@ -250,6 +257,7 @@ impl PlayerBuilder {
                 race: unwrap_field!(race).value,
                 subrace: self.subrace.map(|x| x.value),
             },
+            classes: unwrap_field!(classes),
             gender: unwrap_field!(gender).value,
             attributes: Attributes {
                 str: unwrap_field!(str),
@@ -334,6 +342,110 @@ fn get_subrace_name_from_id(
     Ok(x.to_string())
 }
 
+#[derive(Debug, Clone)]
+pub struct SpellKnownList {
+    pub list_ref: StructField,
+    spells: Vec<Spell>,
+}
+impl SpellKnownList {
+    pub fn new(list_field: StructField) -> Result<Self, Error> {
+        let lock = list_field.read()?;
+        let list = lock.field.expect_list()?;
+
+        let spells = list
+            .iter()
+            .map(|x| {
+                let field = &x.fields[0];
+                field.read_field(Field::expect_word).map(Spell)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        drop(lock);
+
+        Ok(Self {
+            list_ref: list_field,
+            spells,
+        })
+    }
+}
+
+fn opt_field<T>(
+    x: Option<T>,
+    field_name: impl Display,
+    class_name: impl Display,
+) -> Result<T, Error> {
+    x.ok_or_else(|| Error::MissingField(format!("{} in {}", field_name, class_name)))
+}
+
+#[derive(Debug, Clone)]
+pub struct PlayerClass {
+    pub class: FieldRef<Class>,
+    pub level: FieldRef<i16>,
+
+    pub spell_known_list: [Option<SpellKnownList>; 10],
+}
+impl PlayerClass {
+    pub fn new(s: &Struct) -> Result<Self, Error> {
+        let mut class = None;
+        let mut level = None;
+
+        let mut known_list = [const { None }; 10];
+
+        for f in &s.fields {
+            let field_lock = f.read()?;
+            match field_lock.label.as_str() {
+                "Class" => {
+                    let r = FieldRef::new(f.clone(), |f| f.expect_int().map(Class))?;
+
+                    class = Some(r);
+                }
+
+                "ClassLevel" => {
+                    level = Some(FieldRef::new(f.clone(), Field::expect_short)?);
+                }
+
+                label @ ("KnownList0" | "KnownList1" | "KnownList2" | "KnownList3"
+                | "KnownList4" | "KnownList5" | "KnownList6" | "KnownList7"
+                | "KnownList8" | "KnownList9") => {
+                    let spell_level: usize = label[9..]
+                        .parse()
+                        .map_err(|e: std::num::ParseIntError| Error::ParseError(e.to_string()))?;
+                    let spell_structs = field_lock.field.expect_list()?;
+
+                    let spells = spell_structs
+                        .iter()
+                        .map(|x| {
+                            let spell = &x.fields[0];
+                            spell.read_field(Field::expect_word).map(Spell)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    let known = SpellKnownList {
+                        list_ref: f.clone(),
+                        spells,
+                    };
+                    known_list[spell_level] = Some(known);
+                }
+
+                _ => {}
+            }
+        }
+
+        macro_rules! opt {
+            ($x:expr, $field_name:expr) => {
+                opt_field($x, $field_name, "PlayerClass")
+            };
+        }
+
+        #[allow(clippy::missing_transmute_annotations)]
+        Ok(Self {
+            class: opt!(class, "Class")?,
+            level: opt!(level, "ClassLevel")?,
+            spell_known_list: known_list,
+        })
+    }
+}
+
 impl Player {
     pub fn new(
         tlk: &Tlk,
@@ -378,6 +490,17 @@ impl Player {
                     // let lock = field.read().unwrap();
                     // let s = lock.field.expect_list().unwrap();
                 }
+                "ClassList" => {
+                    let lock = field.read()?;
+                    let list = lock.field.expect_list()?;
+
+                    let classes = list
+                        .iter()
+                        .map(PlayerClass::new)
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    player_builder.classes = Some(classes);
+                }
 
                 _ => {}
             }
@@ -409,11 +532,11 @@ impl SaveFile {
 
         let mut reader = two_d_array::FileReader::new().expect("Failed to create 2da reader");
 
-        let players: Vec<Player> = player_list
+        let players = player_list
             .iter()
             .map(|x| Player::new(&tlk, &mut reader, x))
-            .map_while(Result::ok)
-            .collect();
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
 
         Self {
             file,
@@ -558,10 +681,23 @@ impl App {
                 iced_aw::grid_row![text(format!("{name}:")), text(value.to_string())]
             }
 
+            let classes = {
+                let classes = p
+                    .classes
+                    .iter()
+                    .map(|class| format!("{} ({})", class.class.value, class.level.value))
+                    .collect::<Vec<_>>();
+
+                let c = classes.join(" | ");
+
+                text(c)
+            };
+
             column![
                 text(format!("{} {}", p.first_name.get(), p.last_name.get())),
                 text(p.gender.to_string()),
                 text(p.race.to_string()),
+                classes,
                 iced_aw::grid![
                     row("Strength", p.attributes.str.get()),
                     row("Dexterity", p.attributes.dex.get()),

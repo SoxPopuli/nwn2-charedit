@@ -11,6 +11,13 @@ macro_rules! open_enum {
         #[allow(non_snake_case)]
         impl $name {
             $(pub const $k: $name = $name($v);)+
+
+            pub fn is_known_value(x: $repr) -> bool {
+                match x {
+                    $($v => true,)+
+                    _ => false,
+                }
+            }
         }
 
         impl std::fmt::Debug for $name {
