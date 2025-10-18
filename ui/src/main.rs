@@ -171,12 +171,21 @@ pub struct Race {
     pub race: String,
     pub subrace: Option<String>,
 }
+impl std::fmt::Display for Race {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.subrace.as_deref() {
+            Some(subrace) => f.write_str(subrace),
+            None => f.write_str(&self.race),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Player {
     pub first_name: FieldRef<String>,
     pub last_name: FieldRef<String>,
     pub race: Race,
+    pub gender: Gender,
     pub attributes: Attributes,
     pub alignment: Alignment,
 }
@@ -197,10 +206,18 @@ macro_rules! make_builder {
     };
 }
 
+common::open_enum! {
+    pub enum Gender: u8 {
+        Male = 0,
+        Female = 1,
+    }
+}
+
 make_builder! {
     struct PlayerBuilder {
         first_name: FieldRef<String>,
         last_name: FieldRef<String>,
+        gender: FieldRef<Gender>,
         race: FieldRef<String>,
         subrace: FieldRef<String>,
         str: FieldRef<u8>,
@@ -233,6 +250,7 @@ impl PlayerBuilder {
                 race: unwrap_field!(race).value,
                 subrace: self.subrace.map(|x| x.value),
             },
+            gender: unwrap_field!(gender).value,
             attributes: Attributes {
                 str: unwrap_field!(str),
                 dex: unwrap_field!(dex),
@@ -283,6 +301,39 @@ fn get_race_name_from_id(
     Ok(x.to_string())
 }
 
+fn get_subrace_name_from_id(
+    tlk: &Tlk,
+    reader: &mut two_d_array::FileReader,
+    field: &Field,
+) -> Result<String, Error> {
+    let file_name = "racialsubtypes.2da";
+    let table = reader.read(file_name)?;
+    let subrace_id = field.expect_byte()?;
+
+    let name_idx = table
+        .find_column_index("Name")
+        .ok_or(Error::MissingField(format!(
+            "Missing 'Name' field in {file_name}"
+        )))?;
+
+    let s_ref = table.data[(name_idx, subrace_id as usize)]
+        .clone()
+        .ok_or(Error::MissingField(format!(
+            "Missing race name in {file_name} for {subrace_id}"
+        )))?;
+
+    let x = tlk
+        .get_from_str_ref(
+            s_ref
+                .parse()
+                .map_err(|e: std::num::ParseIntError| Error::MissingField(e.to_string()))?,
+        )
+        .map_err(Error::LibError)
+        .and_then(|x| x.ok_or(Error::MissingField("Missing race name str_ref".into())))?;
+
+    Ok(x.to_string())
+}
+
 impl Player {
     pub fn new(
         tlk: &Tlk,
@@ -311,8 +362,10 @@ impl Player {
                 "FirstName" => read_field!(first_name, read_name),
                 "LastName" => read_field!(last_name, read_name),
                 "Race" => read_field!(race, |f| get_race_name_from_id(tlk, data_reader, f)),
-                "Gender" => {}
-                "Subrace" => {}
+                "Gender" => read_field!(gender, |f| { Field::expect_byte(f).map(Gender) }),
+                "Subrace" => {
+                    read_field!(subrace, |f| get_subrace_name_from_id(tlk, data_reader, f))
+                }
                 "Str" => read_field!(str, Field::expect_byte),
                 "Dex" => read_field!(dex, Field::expect_byte),
                 "Con" => read_field!(con, Field::expect_byte),
@@ -444,20 +497,18 @@ impl App {
                 }
             }
 
-            Message::FileSelected(path) => {
-                match open_file(&path) {
-                    Ok(save) => {
-                        let tlk = match self.settings.game_dir.as_deref().map(get_tlk_file) {
-                            Some(Ok(file)) => file,
-                            Some(Err(e)) => return show_error_popup_task(e.to_string()),
-                            None => return show_error_popup_task("Game Directory not set"),
-                        };
+            Message::FileSelected(path) => match open_file(&path) {
+                Ok(save) => {
+                    let tlk = match self.settings.game_dir.as_deref().map(get_tlk_file) {
+                        Some(Ok(file)) => file,
+                        Some(Err(e)) => return show_error_popup_task(e.to_string()),
+                        None => return show_error_popup_task("Game Directory not set"),
+                    };
 
-                        self.save_file = Some(SaveFile::new(save, tlk))
-                    }
-                    Err(e) => show_error_popup(format!("Failed to open save file: {e}")),
+                    self.save_file = Some(SaveFile::new(save, tlk))
                 }
-            }
+                Err(e) => show_error_popup(format!("Failed to open save file: {e}")),
+            },
             Message::Settings(m) => {
                 self.settings.update(m);
             }
@@ -509,6 +560,8 @@ impl App {
 
             column![
                 text(format!("{} {}", p.first_name.get(), p.last_name.get())),
+                text(p.gender.to_string()),
+                text(p.race.to_string()),
                 iced_aw::grid![
                     row("Strength", p.attributes.str.get()),
                     row("Dexterity", p.attributes.dex.get()),

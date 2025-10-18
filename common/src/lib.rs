@@ -16,7 +16,15 @@ macro_rules! open_enum {
         impl std::fmt::Debug for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match *self {
-                    $(Self::$k => write!(f, stringify!($k)),)+
+                    $(Self::$k => f.write_str(stringify!($k)),)+
+                    $name(x) => write!(f, "{x}"),
+                }
+            }
+        }
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match *self {
+                    $(Self::$k => f.write_str(stringify!($k)),)+
                     $name(x) => write!(f, "{x}"),
                 }
             }
