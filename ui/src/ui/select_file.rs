@@ -268,10 +268,7 @@ impl State {
             row![
                 horizontal_space().width(Length::Fill),
                 button("Close").on_press(Message::Close),
-                button("Open").on_press_maybe(match self.selected_entry {
-                    Some(i) => Some(Message::Open(i)),
-                    None => None,
-                }),
+                button("Open").on_press_maybe(self.selected_entry.map(Message::Open)),
             ]
             .height(Length::Fixed(32.0))
             .spacing(16),
