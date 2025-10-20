@@ -14,8 +14,7 @@ use crate::{
     two_d_array::FileReader2DA,
 };
 use iced::{
-    Task,
-    widget::{Column, button, column, row, text},
+    widget::{button, column, row, text, vertical_space, Column}, Task
 };
 use nwn_lib::files::gff::Gff;
 use std::{
@@ -158,7 +157,10 @@ macro_rules! popup_opt {
     }};
 }
 
-fn view_class_spells(class: &PlayerClass) -> Option<Element<'_>> {
+fn view_class_spells<'a>(
+    class: &'a PlayerClass,
+    spell_record: &'a spell::SpellRecord,
+) -> Option<Element<'a>> {
     use iced_aw::{Tabs, tab_bar::TabLabel};
 
     if !class.is_caster {
@@ -169,8 +171,32 @@ fn view_class_spells(class: &PlayerClass) -> Option<Element<'_>> {
 
     let spells = class.spell_known_list.iter().flatten().enumerate();
 
-    for (i, _spells) in spells {
-        tabs = tabs.push(i, TabLabel::Text(i.to_string()), text(i));
+    for (level, spells_known) in spells {
+        let spells = spells_known.spells.iter().map(|spell| {
+            let spell = spell_record.spells.get(&(spell.0 as usize)).
+                unwrap_or_else(|| panic!("{}: {} not found", spell, spell.0));
+
+            let image: Element<'_> = match spell.icon.as_ref() {
+                Some(i) => iced::widget::image(i).width(40.0).into(),
+                None => vertical_space().width(40.0).into(),
+            };
+
+            let desc: Element<'_> = match spell.desc.as_ref() {
+                Some(x) => text(&x.data).into(),
+                None => vertical_space().into(),
+            };
+
+            row![
+                image,
+                text(&spell.name.data).width(80.0),
+                desc,
+            ].spacing(16).into()
+        });
+
+        let spells = iced::widget::Column::from_iter(spells).spacing(16.0);
+        let spells = iced::widget::scrollable(spells);
+
+        tabs = tabs.push(level, TabLabel::Text(level.to_string()), spells);
     }
 
     Some(tabs.into())
@@ -265,48 +291,53 @@ impl App {
             .into()
     }
 
-    fn view(&self) -> Element<'_> {
-        fn view_player(p: &Player) -> Element<'_> {
-            fn row(name: &str, value: impl std::fmt::Display) -> iced_aw::GridRow<'_, Message> {
-                iced_aw::grid_row![text(format!("{name}:")), text(value.to_string())]
-            }
-
-            let classes = {
-                let classes = p
-                    .classes
-                    .iter()
-                    .map(|class| format!("{} ({})", class.class.value, class.level.value))
-                    .collect::<Vec<_>>();
-
-                let c = classes.join(" | ");
-
-                text(c)
-            };
-
-            let stats = column![
-                text(format!("{} {}", p.first_name.get(), p.last_name.get())),
-                text(p.gender.to_string()),
-                text(p.race.to_string()),
-                classes,
-                iced_aw::grid![
-                    row("Strength", p.attributes.str.get()),
-                    row("Dexterity", p.attributes.dex.get()),
-                    row("Constitution", p.attributes.con.get()),
-                    row("Intelligence", p.attributes.int.get()),
-                    row("Wisdom", p.attributes.wis.get()),
-                    row("Charisma", p.attributes.cha.get()),
-                    row("Alignment", &p.alignment)
-                ]
-                .column_spacing(20),
-            ];
-
-            let spells_panel = p.classes.iter().find_map(view_class_spells);
-
-            row![stats].push_maybe(spells_panel).into()
+    fn view_player<'a>(&'a self, p: &'a Player) -> Element<'a> {
+        fn row(name: &str, value: impl std::fmt::Display) -> iced_aw::GridRow<'_, Message> {
+            iced_aw::grid_row![text(format!("{name}:")), text(value.to_string())]
         }
 
+        let classes = {
+            let classes = p
+                .classes
+                .iter()
+                .map(|class| format!("{} ({})", class.class.value, class.level.value))
+                .collect::<Vec<_>>();
+
+            let c = classes.join(" | ");
+
+            text(c)
+        };
+
+        let stats = column![
+            text(format!("{} {}", p.first_name.get(), p.last_name.get())),
+            text(p.gender.to_string()),
+            text(p.race.to_string()),
+            classes,
+            iced_aw::grid![
+                row("Strength", p.attributes.str.get()),
+                row("Dexterity", p.attributes.dex.get()),
+                row("Constitution", p.attributes.con.get()),
+                row("Intelligence", p.attributes.int.get()),
+                row("Wisdom", p.attributes.wis.get()),
+                row("Charisma", p.attributes.cha.get()),
+                row("Alignment", &p.alignment)
+            ]
+            .column_spacing(20),
+        ];
+
+        let spells_panel = p.classes.iter().find_map(|x| {
+            view_class_spells(
+                x,
+                &self.settings.game_resources.as_ref().unwrap().spell_record,
+            )
+        });
+
+        row![stats].push_maybe(spells_panel).into()
+    }
+
+    fn view(&self) -> Element<'_> {
         let names = match &self.save_file {
-            Some(save) => save.players.iter().map(view_player).collect(),
+            Some(save) => save.players.iter().map(|x| self.view_player(x)).collect(),
             None => Vec::new(),
         };
 

@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use iced::widget::image::Handle;
 
@@ -6,7 +9,6 @@ use crate::{
     Tlk,
     error::Error,
     tlk_string_ref::TlkStringRef,
-    two_d_array::FileReader2DA,
     ui::settings::{IconName, IconPath},
 };
 
@@ -35,6 +37,11 @@ pub struct Spell {
 
 pub type SpellId = usize;
 
+fn join_path(base: &Path, paths: &[&str]) -> PathBuf {
+    let paths = paths.join(std::path::MAIN_SEPARATOR_STR);
+    base.join(paths)
+}
+
 #[derive(Debug)]
 pub struct SpellRecord {
     pub spells: HashMap<SpellId, Spell>,
@@ -42,19 +49,20 @@ pub struct SpellRecord {
 impl SpellRecord {
     pub fn new(
         tlk: &Tlk,
-        reader: &mut FileReader2DA,
+        game_dir: &Path,
         icon_paths: &HashMap<IconName, IconPath>,
     ) -> Result<Self, Error> {
         let file_name = "spells.2da";
-        let table = reader.read(file_name)?;
 
-        let col = |name| {
-            table
-                .find_column_index(name)
-                .ok_or(Error::MissingTableColumn {
-                    file: file_name,
-                    column: name,
-                })
+        let file_path = join_path(
+            game_dir,
+            &["campaigns", "westgate_campaign", "2da", file_name],
+        );
+
+        let table = {
+            let f = std::fs::File::open(file_path)?;
+            let reader = std::io::BufReader::new(f);
+            nwn_lib::files::two_da::parse(reader)?
         };
 
         let [
@@ -99,10 +107,7 @@ impl SpellRecord {
             let desc_ref = row.get(desc_idx)?.as_deref()?;
             let desc_ref = desc_ref.parse().ok();
 
-            let name = tlk
-                .get_from_str_ref(name_ref)
-                .expect("Couldn't find spell name in tlk file")?
-                .to_string();
+            let name = tlk.get_from_str_ref(name_ref).ok().flatten()?.to_string();
 
             let desc = desc_ref.and_then(|desc_ref| {
                 let desc = tlk

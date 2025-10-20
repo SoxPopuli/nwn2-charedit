@@ -107,7 +107,6 @@ impl PlayerClass {
             };
         }
 
-        #[allow(clippy::missing_transmute_annotations)]
         Ok(Self {
             class: opt!(class, "Class")?,
             level: opt!(level, "ClassLevel")?,

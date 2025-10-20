@@ -190,7 +190,7 @@ impl GameResources {
         let mut reader = FileReader2DA::new(game_dir)?;
 
         let feat_record = FeatRecord::new(&tlk, &mut reader, &icon_paths)?;
-        let spell_record = SpellRecord::new(&tlk, &mut reader, &icon_paths)?;
+        let spell_record = SpellRecord::new(&tlk, game_dir, &icon_paths)?;
 
         Ok(Self {
             game_dir: game_dir.into(),
