@@ -10,12 +10,27 @@ use crate::{
     ui::settings::{IconName, IconPath},
 };
 
+type SpellLevel = Option<std::num::NonZeroU8>;
+
+#[derive(Debug)]
+pub struct SpellLevels {
+    pub bard: SpellLevel,
+    pub cleric: SpellLevel,
+    pub druid: SpellLevel,
+    pub paladin: SpellLevel,
+    pub ranger: SpellLevel,
+    pub wiz_sorc: SpellLevel,
+    pub warlock: SpellLevel,
+    pub innate: SpellLevel,
+}
+
 #[derive(Debug)]
 pub struct Spell {
     pub label: String,
     pub name: TlkStringRef,
     pub desc: Option<TlkStringRef>,
     pub icon: Option<Handle>,
+    pub spell_levels: SpellLevels,
 }
 
 pub type SpellId = usize;
@@ -42,10 +57,38 @@ impl SpellRecord {
                 })
         };
 
-        let label_idx = col("Label")?;
-        let name_idx = col("Name")?;
-        let desc_idx = col("SpellDesc")?;
-        let icon_idx = col("IconResRef")?;
+        let [
+            label_idx,
+            name_idx,
+            desc_idx,
+            icon_idx,
+            bard_idx,
+            cleric_idx,
+            druid_idx,
+            paladin_idx,
+            ranger_idx,
+            wiz_sorc_idx,
+            warlock_idx,
+            innate_idx,
+        ] = table
+            .find_column_indices([
+                "Label",
+                "Name",
+                "SpellDesc",
+                "IconResRef",
+                "Bard",
+                "Cleric",
+                "Druid",
+                "Paladin",
+                "Ranger",
+                "Wiz_Sorc",
+                "Warlock",
+                "Innate",
+            ])
+            .map_err(|e| Error::MissingTableColumn {
+                file: file_name,
+                column: e,
+            })?;
 
         let from_row = |row: &[Option<String>]| -> Option<Spell> {
             let label = row.get(label_idx)?.clone()?;
@@ -87,6 +130,23 @@ impl SpellRecord {
                     Handle::from_rgba(dds.header.width, dds.header.height, pixels)
                 });
 
+            let get_spell_level = |idx: usize| {
+                row.get(idx)
+                    .and_then(|x| x.as_deref())
+                    .and_then(|x| x.parse().ok())
+            };
+
+            let spell_levels = SpellLevels {
+                bard: get_spell_level(bard_idx),
+                cleric: get_spell_level(cleric_idx),
+                druid: get_spell_level(druid_idx),
+                paladin: get_spell_level(paladin_idx),
+                ranger: get_spell_level(ranger_idx),
+                wiz_sorc: get_spell_level(wiz_sorc_idx),
+                warlock: get_spell_level(warlock_idx),
+                innate: get_spell_level(innate_idx),
+            };
+
             Some(Spell {
                 name: TlkStringRef {
                     id: name_ref,
@@ -98,6 +158,7 @@ impl SpellRecord {
                 }),
                 label,
                 icon,
+                spell_levels,
             })
         };
 

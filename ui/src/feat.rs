@@ -32,19 +32,12 @@ impl FeatRecord {
 
         let table = reader.read(file_name)?;
 
-        let column = |name| {
-            table
-                .find_column_index(name)
-                .ok_or(Error::MissingTableColumn {
-                    file: file_name,
-                    column: name,
-                })
-        };
-
-        let label_idx = column("LABEL")?;
-        let name_idx = column("FEAT")?;
-        let desc_idx = column("DESCRIPTION")?;
-        let icon_idx = column("ICON")?;
+        let [label_idx, name_idx, desc_idx, icon_idx] = table
+            .find_column_indices(["LABEL", "FEAT", "DESCRIPTION", "ICON"])
+            .map_err(|e| Error::MissingTableColumn {
+                file: file_name,
+                column: e,
+            })?;
 
         let from_row = |row: &[Option<String>]| -> Option<Feat> {
             let label = row.get(label_idx)?.clone()?;
