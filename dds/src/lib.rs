@@ -56,19 +56,19 @@ impl DdsPixelFormat {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Header {
-    size: u32,
-    flags: u32,
-    height: u32,
-    width: u32,
-    pitch_or_linear_size: u32,
-    depth: u32,
-    mip_map_count: u32,
+    pub size: u32,
+    pub flags: u32,
+    pub height: u32,
+    pub width: u32,
+    pub pitch_or_linear_size: u32,
+    pub depth: u32,
+    pub mip_map_count: u32,
     reserved1: [u32; 11],
-    pixel_format: DdsPixelFormat,
-    caps: u32,
-    caps2: u32,
-    caps3: u32,
-    caps4: u32,
+    pub pixel_format: DdsPixelFormat,
+    pub caps: u32,
+    pub caps2: u32,
+    pub caps3: u32,
+    pub caps4: u32,
     reserved2: u32,
 }
 impl Header {

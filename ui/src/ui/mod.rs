@@ -1,6 +1,11 @@
 pub mod select_file;
 pub mod settings;
 
+pub use self::{
+    select_file::{Message as SelectFileMessage, State as SelectFileState},
+    settings::{Message as SettingsMessage, State as SettingsState},
+};
+
 use iced::{Element, Length, widget::container};
 
 pub fn bordered<'a, Msg>(view: Element<'a, Msg>) -> Element<'a, Msg>

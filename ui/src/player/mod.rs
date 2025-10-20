@@ -53,7 +53,7 @@ impl std::fmt::Display for Race {
 
 fn get_race_name_from_id(
     tlk: &Tlk,
-    reader: &mut two_d_array::FileReader,
+    reader: &mut two_d_array::FileReader2DA,
     field: &Field,
 ) -> Result<String, Error> {
     let file_name = "racialtypes.2da";
@@ -85,7 +85,7 @@ fn get_race_name_from_id(
 
 fn get_subrace_name_from_id(
     tlk: &Tlk,
-    reader: &mut two_d_array::FileReader,
+    reader: &mut two_d_array::FileReader2DA,
     field: &Field,
 ) -> Result<String, Error> {
     let file_name = "racialsubtypes.2da";
@@ -219,7 +219,7 @@ pub struct Player {
 impl Player {
     pub fn new(
         tlk: &Tlk,
-        data_reader: &mut two_d_array::FileReader,
+        data_reader: &mut two_d_array::FileReader2DA,
         player_struct: &Struct,
     ) -> Result<Self, Error> {
         let read_name = |field: &Field| -> Result<String, Error> {

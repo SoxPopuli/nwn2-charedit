@@ -1,12 +1,17 @@
 mod error;
+mod feat;
 mod field_ref;
 mod ids;
 mod player;
+mod spell;
+mod tlk_string_ref;
 mod two_d_array;
 mod ui;
 
 use crate::{
-    error::Error, player::Player, player::PlayerClass, ui::settings::Message as SettingsMessage,
+    error::Error,
+    player::{Player, PlayerClass},
+    two_d_array::FileReader2DA,
 };
 use iced::{
     Task,
@@ -51,10 +56,10 @@ fn open_file(path: &Path) -> Result<Gff, Error> {
 enum Message {
     NoMsg,
     FileSelected(PathBuf),
-    Settings(SettingsMessage),
+    Settings(ui::SettingsMessage),
     OpenSettings,
     OpenFileSelector,
-    FileSelector(ui::select_file::Message),
+    FileSelector(ui::SelectFileMessage),
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -92,12 +97,10 @@ pub type Tlk = nwn_lib::files::tlk::Tlk<BufReader<File>>;
 #[derive(Debug)]
 pub struct SaveFile {
     pub file: Gff,
-    pub tlk: Tlk,
     pub players: Vec<Player>,
-    pub data_reader: two_d_array::FileReader,
 }
 impl SaveFile {
-    pub fn new(file: Gff, tlk: Tlk) -> Self {
+    pub fn new(file: Gff, tlk: &Tlk, reader_2da: &mut FileReader2DA) -> Self {
         let player_list = file
             .root
             .bfs_iter()
@@ -107,20 +110,13 @@ impl SaveFile {
         let lock = player_list.read().unwrap();
         let player_list = lock.field.expect_list().unwrap();
 
-        let mut reader = two_d_array::FileReader::new().expect("Failed to create 2da reader");
-
         let players = player_list
             .iter()
-            .map(|x| Player::new(&tlk, &mut reader, x))
+            .map(|x| Player::new(tlk, reader_2da, x))
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
-        Self {
-            file,
-            tlk,
-            players,
-            data_reader: reader,
-        }
+        Self { file, players }
     }
 
     pub fn save_changes<W>(&mut self, output: &mut W) -> Result<(), Error>
@@ -144,28 +140,22 @@ fn show_error_popup_task(msg: impl Into<String>) -> iced::Task<Message> {
     Task::none()
 }
 
-fn get_tlk_file(game_dir: &Path) -> Result<Tlk, Error> {
-    let mut read_dir = game_dir.read_dir()?;
+/// Show error popup then panic
+#[macro_export]
+macro_rules! popup_panic {
+    ($msg:tt) => {{
+        $crate::show_error_popup(format!($msg));
+        panic!($msg);
+    }};
+}
 
-    let file_path = read_dir.find_map(|x| {
-        if let Ok(dir) = x
-            && let Ok(m) = dir.metadata()
-            && m.is_file()
-            && dir.file_name().eq_ignore_ascii_case("dialog.tlk")
-        {
-            return Some(dir.path());
-        }
-
+/// Show error popup then return `None`
+#[macro_export]
+macro_rules! popup_opt {
+    ($msg:tt) => {{
+        $crate::show_error_popup(format!($msg));
         None
-    });
-
-    match file_path {
-        Some(p) => {
-            let f = File::open(p)?;
-            Tlk::read(BufReader::new(f)).map_err(Error::LibError)
-        }
-        None => Err(Error::MissingDialogFile),
-    }
+    }};
 }
 
 fn view_class_spells(class: &PlayerClass) -> Option<Element<'_>> {
@@ -186,11 +176,11 @@ fn view_class_spells(class: &PlayerClass) -> Option<Element<'_>> {
     Some(tabs.into())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct App {
     save_file: Option<SaveFile>,
-    settings: ui::settings::State,
-    select_file: ui::select_file::State,
+    settings: ui::SettingsState,
+    select_file: ui::SelectFileState,
 }
 impl App {
     fn title() -> &'static str {
@@ -201,21 +191,37 @@ impl App {
         iced::Theme::Dark
     }
 
+    fn init() -> (Self, Task<Message>) {
+        let this = App {
+            save_file: None,
+            settings: ui::SettingsState::from_file_or_default(),
+            select_file: ui::SelectFileState::default(),
+        };
+
+        (this, Task::none())
+    }
+
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::NoMsg => {}
             Message::FileSelected(path) => match open_file(&path) {
                 Ok(save) => {
-                    let tlk = match self.settings.game_dir.as_deref().map(get_tlk_file) {
-                        Some(Ok(file)) => file,
-                        Some(Err(e)) => return show_error_popup_task(e.to_string()),
-                        None => return show_error_popup_task("Game Directory not set"),
+                    let save_file = match self.settings.game_resources.as_mut() {
+                        Some(g) => SaveFile::new(save, &g.tlk, &mut g.file_reader),
+                        None => {
+                            return show_error_popup_task(
+                                "Couldn't find game resources, is Game Directory set?".to_string(),
+                            );
+                        }
                     };
 
-                    self.save_file = Some(SaveFile::new(save, tlk))
+                    self.save_file = Some(save_file);
                 }
                 Err(e) => show_error_popup(format!("Failed to open save file: {e}")),
             },
+            Message::Settings(m @ ui::SettingsMessage::Save) => {
+                self.settings.update(m);
+            }
             Message::Settings(m) => {
                 self.settings.update(m);
             }
@@ -325,37 +331,12 @@ impl App {
             .centered()
             .window_size((640.0, 480.0))
             .theme(Self::theme)
-            .run()
+            .run_with(Self::init)
     }
 }
 
 fn main() {
     App::run().unwrap()
-}
-
-pub(crate) fn read_dir_recursive(path: &std::path::Path) -> impl Iterator<Item = PathBuf> {
-    use std::collections::VecDeque;
-    use std::fs::DirEntry;
-    use std::path::Path;
-
-    fn read_dir(dir: impl AsRef<Path>) -> impl Iterator<Item = DirEntry> {
-        dir.as_ref().read_dir().unwrap().filter_map(Result::ok)
-    }
-
-    let mut stack = VecDeque::from_iter(read_dir(path));
-
-    std::iter::from_fn(move || {
-        while let Some(x) = stack.pop_front() {
-            let metadata = x.metadata().unwrap();
-            if metadata.is_file() {
-                return Some(x.path());
-            } else if metadata.is_dir() {
-                read_dir(x.path()).for_each(|x| stack.push_front(x));
-            }
-        }
-
-        None
-    })
 }
 
 #[cfg(test)]
