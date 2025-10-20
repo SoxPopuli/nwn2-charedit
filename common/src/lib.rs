@@ -79,4 +79,3 @@ macro_rules! int_enum {
         }
     };
 }
-

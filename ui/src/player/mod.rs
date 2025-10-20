@@ -1,6 +1,7 @@
+pub mod feat_list;
 pub mod player_class;
 
-use crate::{Tlk, error::Error, field_ref::FieldRef, two_d_array};
+use crate::{Tlk, error::Error, field_ref::FieldRef, player::feat_list::FeatList, two_d_array};
 use nwn_lib::files::gff::{field::Field, r#struct::Struct};
 pub use player_class::PlayerClass;
 
@@ -53,7 +54,7 @@ impl std::fmt::Display for Race {
 
 fn get_race_name_from_id(
     tlk: &Tlk,
-    reader: &mut two_d_array::FileReader,
+    reader: &mut two_d_array::FileReader2DA,
     field: &Field,
 ) -> Result<String, Error> {
     let file_name = "racialtypes.2da";
@@ -85,7 +86,7 @@ fn get_race_name_from_id(
 
 fn get_subrace_name_from_id(
     tlk: &Tlk,
-    reader: &mut two_d_array::FileReader,
+    reader: &mut two_d_array::FileReader2DA,
     field: &Field,
 ) -> Result<String, Error> {
     let file_name = "racialsubtypes.2da";
@@ -165,6 +166,7 @@ make_builder! {
         cha: FieldRef<u8>,
         good_evil: FieldRef<u8>,
         lawful_chaotic: FieldRef<u8>,
+        feats: FeatList,
     }
 }
 
@@ -201,6 +203,7 @@ impl PlayerBuilder {
                 good_evil: unwrap_field!(good_evil),
                 lawful_chaotic: unwrap_field!(lawful_chaotic),
             },
+            feats: unwrap_field!(feats),
         })
     }
 }
@@ -214,12 +217,13 @@ pub struct Player {
     pub classes: Vec<PlayerClass>,
     pub attributes: Attributes,
     pub alignment: Alignment,
+    pub feats: FeatList,
 }
 
 impl Player {
     pub fn new(
         tlk: &Tlk,
-        data_reader: &mut two_d_array::FileReader,
+        data_reader: &mut two_d_array::FileReader2DA,
         player_struct: &Struct,
     ) -> Result<Self, Error> {
         let read_name = |field: &Field| -> Result<String, Error> {
@@ -270,6 +274,10 @@ impl Player {
                         .collect::<Result<Vec<_>, _>>()?;
 
                     player_builder.classes(classes);
+                }
+                "FeatList" => {
+                    let feats = FeatList::from_field(field.clone())?;
+                    player_builder.feats(feats);
                 }
 
                 _ => {}

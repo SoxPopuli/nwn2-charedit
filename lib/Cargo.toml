@@ -10,7 +10,7 @@ rust-utils.workspace = true
 encoding_rs = "0.8.34"
 flate2 = "1.0.34"
 paste.workspace = true
-itertools = "0.14.0"
+itertools.workspace = true
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

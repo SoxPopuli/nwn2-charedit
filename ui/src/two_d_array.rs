@@ -1,6 +1,10 @@
 use cfg_if::cfg_if;
 use nwn_lib::files::two_da::DataTable;
-use std::{collections::HashMap, fs::File, io::BufReader, path::PathBuf};
+use std::{
+    fs::File,
+    io::BufReader,
+    path::{Path, PathBuf},
+};
 
 use crate::error::Error;
 
@@ -62,17 +66,12 @@ struct Zip {
 }
 
 #[derive(Debug)]
-pub struct FileReader {
+pub struct FileReader2DA {
     file: Zip,
-    cache: HashMap<String, DataTable>,
 }
-impl FileReader {
-    pub fn new() -> Result<Self, Error> {
-        let steamapps = find_steamapps_path();
-        let data_path = steamapps
-            .join("common")
-            .join("NWN2 Enhanced Edition")
-            .join("data");
+impl FileReader2DA {
+    pub fn new(game_dir: &Path) -> Result<Self, Error> {
+        let data_path = game_dir.join("data");
 
         if !data_path.exists() {
             return Err(Error::MissingGamePath(data_path));
@@ -96,23 +95,13 @@ impl FileReader {
 
         let file = open_zip(data_path.join("2da.zip"))?;
 
-        Ok(Self {
-            file,
-            cache: HashMap::new(),
-        })
+        Ok(Self { file })
     }
 
-    pub fn read(&mut self, file_name: &str) -> Result<&DataTable, Error> {
-        if self.cache.contains_key(file_name) {
-            Ok(self.cache.get(file_name).unwrap())
-        } else {
-            let path = format!("{}/{}", self.file.name, file_name);
-            let entry = self.file.archive.by_path(&path).unwrap();
+    pub fn read(&mut self, file_name: &str) -> Result<DataTable, Error> {
+        let path = format!("{}/{}", self.file.name, file_name);
+        let entry = self.file.archive.by_path(&path).unwrap();
 
-            let table = nwn_lib::files::two_da::parse(entry)?;
-
-            self.cache.insert(file_name.to_string(), table);
-            Ok(self.cache.get(file_name).unwrap())
-        }
+        nwn_lib::files::two_da::parse(entry).map_err(Error::LibError)
     }
 }

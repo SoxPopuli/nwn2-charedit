@@ -1,11 +1,19 @@
-use crate::error::Error;
+use crate::{
+    Tlk, error::Error, feat::FeatRecord, popup_opt, popup_panic, show_error_popup,
+    spell::SpellRecord, two_d_array::FileReader2DA,
+};
 use cfg_if::cfg_if;
 use iced::{
     Length,
     widget::{button, column, horizontal_space, row, text, text_input, vertical_space},
 };
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::BufReader,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PickDirMode {
@@ -76,7 +84,10 @@ struct SavedSettings {
 fn save_settings(settings: &State) -> Result<(), Error> {
     let saved = SavedSettings {
         save_dir: settings.save_dir.clone(),
-        game_dir: settings.game_dir.clone(),
+        game_dir: settings
+            .game_resources
+            .as_ref()
+            .map(|GameResources { game_dir, .. }| game_dir.clone()),
     };
 
     let f = std::fs::File::create(get_cache_file_path())?;
@@ -92,52 +103,166 @@ fn read_settings() -> Result<SavedSettings, Error> {
     serde_json::from_reader(reader).map_err(Error::Deserialization)
 }
 
-fn path_to_string(path: &Option<PathBuf>) -> String {
-    path.as_deref()
-        .and_then(|x| x.to_str())
+fn path_to_string(path: Option<&Path>) -> String {
+    path.and_then(|x| x.to_str())
         .map(|x| x.to_string())
         .unwrap_or_default()
 }
 
+pub type IconName = String;
+pub type IconPath = PathBuf;
+
+pub(crate) fn read_dir_recursive(path: &std::path::Path) -> impl Iterator<Item = PathBuf> {
+    use std::collections::VecDeque;
+    use std::fs::DirEntry;
+    use std::path::Path;
+
+    fn read_dir(dir: impl AsRef<Path>) -> impl Iterator<Item = DirEntry> {
+        dir.as_ref().read_dir().unwrap().filter_map(Result::ok)
+    }
+
+    let mut stack = VecDeque::from_iter(read_dir(path));
+
+    std::iter::from_fn(move || {
+        while let Some(x) = stack.pop_front() {
+            let metadata = x.metadata().unwrap();
+            if metadata.is_file() {
+                return Some(x.path());
+            } else if metadata.is_dir() {
+                read_dir(x.path()).for_each(|x| stack.push_front(x));
+            }
+        }
+
+        None
+    })
+}
+
+fn get_icon_paths(game_dir: &Path) -> HashMap<IconName, IconPath> {
+    read_dir_recursive(game_dir)
+        .filter_map(|x| {
+            let name = x
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(|x| x.to_string())?;
+            Some((name, x))
+        })
+        .collect()
+}
+
+fn get_tlk_file(game_dir: &Path) -> Result<Tlk, Error> {
+    let mut read_dir = game_dir.read_dir()?;
+
+    let file_path = read_dir.find_map(|x| {
+        if let Ok(dir) = x
+            && let Ok(m) = dir.metadata()
+            && m.is_file()
+            && dir.file_name().eq_ignore_ascii_case("dialog.tlk")
+        {
+            return Some(dir.path());
+        }
+
+        None
+    });
+
+    match file_path {
+        Some(p) => {
+            let f = File::open(p)?;
+            Tlk::read(BufReader::new(f)).map_err(Error::LibError)
+        }
+        None => Err(Error::MissingDialogFile(game_dir.into())),
+    }
+}
+
 #[derive(Debug)]
+pub struct GameResources {
+    pub game_dir: PathBuf,
+    pub tlk: Tlk,
+    pub icon_paths: HashMap<IconName, IconPath>,
+    pub feat_record: FeatRecord,
+    pub spell_record: SpellRecord,
+    pub file_reader: FileReader2DA,
+}
+impl GameResources {
+    fn load(game_dir: &Path) -> Result<Self, Error> {
+        let tlk = get_tlk_file(game_dir)?;
+        let icon_paths = get_icon_paths(game_dir);
+
+        let reader = FileReader2DA::new(game_dir)?;
+
+        let (feat_record, spell_record) = std::thread::scope(|s| {
+            let a = s.spawn(|| FeatRecord::new(&tlk, game_dir, &icon_paths));
+            let b = s.spawn(|| SpellRecord::new(&tlk, game_dir, &icon_paths));
+
+            let a = a.join().unwrap();
+            let b = b.join().unwrap();
+
+            match (a, b) {
+                (Ok(a), Ok(b)) => Ok((a, b)),
+                (Err(a), Err(b)) => Err(Error::Aggregate(vec![a, b])),
+                (Err(a), _) => Err(a),
+                (_, Err(b)) => Err(b),
+            }
+        })?;
+
+        Ok(Self {
+            game_dir: game_dir.into(),
+            tlk,
+            icon_paths,
+            feat_record,
+            spell_record,
+            file_reader: reader,
+        })
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct State {
     pub active: bool,
-    pub game_dir: Option<PathBuf>,
     pub save_dir: Option<PathBuf>,
+    pub game_resources: Option<GameResources>,
 
-    game_dir_temp: String,
-    save_dir_temp: String,
+    pub game_dir_temp: String,
+    pub save_dir_temp: String,
 }
-impl Default for State {
-    fn default() -> Self {
+impl State {
+    pub fn from_file_or_default() -> Self {
         match read_settings() {
             Ok(settings) => Self {
                 active: false,
-                game_dir_temp: path_to_string(&settings.game_dir),
-                save_dir_temp: path_to_string(&settings.save_dir),
-                game_dir: settings.game_dir,
+                game_dir_temp: path_to_string(settings.game_dir.as_deref()),
+                save_dir_temp: path_to_string(settings.save_dir.as_deref()),
+
+                game_resources: match settings.game_dir.as_deref().map(GameResources::load) {
+                    Some(Ok(x)) => Some(x),
+                    Some(Err(e)) => {
+                        show_error_popup(e.to_string());
+                        None
+                    }
+                    None => None,
+                },
                 save_dir: settings.save_dir,
             },
             Err(_) => Self {
                 active: false,
-                game_dir: None,
                 save_dir: None,
+                game_resources: None,
 
                 game_dir_temp: String::new(),
                 save_dir_temp: String::new(),
             },
         }
     }
-}
-impl State {
-    pub fn is_unset(&self) -> bool {
-        self.game_dir.is_none() || self.save_dir.is_none()
-    }
 
     pub fn close(&mut self) {
         self.active = false;
-        self.game_dir_temp = path_to_string(&self.game_dir);
-        self.save_dir_temp = path_to_string(&self.save_dir);
+
+        let game_dir = self
+            .game_resources
+            .as_ref()
+            .map(|GameResources { game_dir, .. }| game_dir.as_path());
+
+        self.game_dir_temp = path_to_string(game_dir);
+        self.save_dir_temp = path_to_string(self.save_dir.as_deref());
     }
 
     fn pick_dir(&mut self, mode: PickDirMode) {
@@ -177,15 +302,16 @@ impl State {
                 self.close();
             }
             Message::Save => {
-                let set_dir = |d: &mut Option<PathBuf>, p: &str| {
-                    let path = Some(PathBuf::from(p));
-                    *d = path;
+                let game_dir = Path::new(&self.game_dir_temp);
+                self.game_resources = match GameResources::load(game_dir) {
+                    Ok(x) => Some(x),
+                    Err(e) => popup_opt!("{e}"),
                 };
 
-                set_dir(&mut self.game_dir, &self.game_dir_temp);
-                set_dir(&mut self.save_dir, &self.save_dir_temp);
+                self.save_dir = Some(PathBuf::from(&self.save_dir_temp));
 
-                save_settings(self).expect("Failed to save settings");
+                save_settings(self)
+                    .unwrap_or_else(|e| popup_panic!("Failed to save settings: {e}"));
 
                 self.close();
             }
@@ -222,6 +348,6 @@ impl State {
         ]
         .spacing(8);
 
-        super::bordered(body.into())
+        super::bordered_padded(body).into()
     }
 }

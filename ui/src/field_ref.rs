@@ -31,6 +31,13 @@ impl<T> FieldRef<T> {
         lock.field = save_fn(&self.value);
     }
 
+    pub fn modify(&mut self, modify_fn: impl FnOnce(&mut T), save_fn: impl FnOnce(&T) -> Field) {
+        modify_fn(&mut self.value);
+
+        let mut lock = self.field.write().unwrap();
+        lock.field = save_fn(&self.value);
+    }
+
     pub fn get(&self) -> &T {
         &self.value
     }

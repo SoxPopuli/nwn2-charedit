@@ -57,7 +57,7 @@ impl StructField {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Struct {
     pub id: u32,
-    pub(crate) original_data_or_data_offset: u32,
+    pub original_data_or_data_offset: u32,
     pub fields: Vec<StructField>,
 }
 impl Struct {

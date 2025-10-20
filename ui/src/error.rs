@@ -3,13 +3,14 @@ use std::{path::PathBuf, sync::PoisonError};
 #[derive(Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    Aggregate(Vec<Error>),
     Serialization(serde_json::Error),
     Deserialization(serde_json::Error),
     EnvNotFound {
         var: &'static str,
     },
     MissingGamePath(PathBuf),
-    MissingDialogFile,
+    MissingDialogFile(PathBuf),
     Io(std::io::ErrorKind),
     LibError(nwn_lib::error::Error),
     LockError(String),
@@ -18,12 +19,20 @@ pub enum Error {
         error: nwn_lib::error::Error,
     },
     MissingField(String),
+    MissingTableColumn {
+        file: &'static str,
+        column: &'static str,
+    },
     ParseError(String),
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingDialogFile => write!(f, "Couldn't find dialog.tlk in game directory"),
+            Self::MissingDialogFile(dir) => write!(
+                f,
+                "Couldn't find dialog.tlk in game directory '{}'",
+                dir.display()
+            ),
             x => write!(f, "{:?}", x),
         }
     }

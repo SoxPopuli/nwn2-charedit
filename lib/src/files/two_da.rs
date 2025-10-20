@@ -6,7 +6,7 @@
 //   - 2DA_X2.zip [Optional: Expansion]
 //     - Templates_X2.zip
 
-use std::io::Read;
+use std::{collections::HashMap, io::Read};
 
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct DataTable {
@@ -20,6 +20,27 @@ impl DataTable {
             .enumerate()
             .find(|(_, x)| x.as_str() == column)
             .map(|(i, _)| i)
+    }
+
+    /// Find column index for each name
+    pub fn find_column_indices<'a, const N: usize>(
+        &self,
+        names: [&'a str; N],
+    ) -> Result<[usize; N], &'a str> {
+        let column_map = HashMap::<_, _>::from_iter(
+            self.columns
+                .iter()
+                .enumerate()
+                .map(|(i, x)| (x.as_str(), i)),
+        );
+
+        let mut output = [0; N];
+
+        for (i, n) in names.iter().enumerate() {
+            output[i] = column_map.get(n).copied().ok_or(*n)?;
+        }
+
+        Ok(output)
     }
 
     /// Get an iterator over data in column *index*

@@ -2805,11 +2805,13 @@ name = "nwn2-charedit-ui"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "chrono",
  "common",
  "dds",
  "iced",
  "iced_aw",
  "image 0.25.8",
+ "itertools 0.14.0",
  "nwn2-charedit-lib",
  "paste",
  "regex",
