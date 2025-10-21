@@ -12,6 +12,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::BufReader,
+    mem::MaybeUninit,
     path::{Path, PathBuf},
 };
 
@@ -187,10 +188,22 @@ impl GameResources {
         let tlk = get_tlk_file(game_dir)?;
         let icon_paths = get_icon_paths(game_dir);
 
-        let mut reader = FileReader2DA::new(game_dir)?;
+        let reader = FileReader2DA::new(game_dir)?;
 
-        let feat_record = FeatRecord::new(&tlk, &mut reader, &icon_paths)?;
-        let spell_record = SpellRecord::new(&tlk, game_dir, &icon_paths)?;
+        let (feat_record, spell_record) = std::thread::scope(|s| {
+            let a = s.spawn(|| FeatRecord::new(&tlk, game_dir, &icon_paths));
+            let b = s.spawn(|| SpellRecord::new(&tlk, game_dir, &icon_paths));
+
+            let a = a.join().unwrap();
+            let b = b.join().unwrap();
+
+            match (a, b) {
+                (Ok(a), Ok(b)) => Ok((a, b)),
+                (Err(a), Err(b)) => Err(Error::Aggregate(vec![a, b])),
+                (Err(a), _) => Err(a),
+                (_, Err(b)) => Err(b),
+            }
+        })?;
 
         Ok(Self {
             game_dir: game_dir.into(),

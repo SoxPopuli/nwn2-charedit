@@ -3,6 +3,7 @@ use std::{path::PathBuf, sync::PoisonError};
 #[derive(Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    Aggregate(Vec<Error>),
     Serialization(serde_json::Error),
     Deserialization(serde_json::Error),
     EnvNotFound {

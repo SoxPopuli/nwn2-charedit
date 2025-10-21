@@ -2,11 +2,11 @@ use crate::{
     Tlk,
     error::Error,
     tlk_string_ref::TlkStringRef,
-    two_d_array,
     ui::settings::{IconName, IconPath},
 };
 use iced::widget::image::Handle;
-use std::collections::HashMap;
+use nwn_lib::files::two_da;
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Feat {
@@ -18,19 +18,27 @@ pub struct Feat {
 
 pub type FeatId = usize;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FeatRecord {
     pub feats: HashMap<FeatId, Feat>,
 }
 impl FeatRecord {
     pub fn new(
         tlk: &Tlk,
-        reader: &mut two_d_array::FileReader2DA,
+        game_dir: &Path,
         icon_paths: &HashMap<IconName, IconPath>,
     ) -> Result<Self, Error> {
         let file_name = "feat.2da";
+        let file_path = super::join_path(
+            game_dir,
+            &["campaigns", "westgate_campaign", "2da", file_name],
+        );
 
-        let table = reader.read(file_name)?;
+        let table = {
+            let file = File::open(file_path)?;
+            let reader = BufReader::new(file);
+            two_da::parse(reader)?
+        };
 
         let [label_idx, name_idx, desc_idx, icon_idx] = table
             .find_column_indices(["LABEL", "FEAT", "DESCRIPTION", "ICON"])
@@ -48,16 +56,10 @@ impl FeatRecord {
             let desc_ref = row.get(desc_idx)?.as_deref()?;
             let desc_ref = desc_ref.parse().ok();
 
-            let name = tlk
-                .get_from_str_ref(name_ref)
-                .expect("Couldn't find feat name in tlk file")?
-                .to_string();
+            let name = tlk.get_from_str_ref(name_ref).ok().flatten()?.to_string();
 
             let desc = desc_ref.and_then(|desc_ref| {
-                let desc = tlk
-                    .get_from_str_ref(desc_ref)
-                    .expect("Couldn't find feat description in tlk file")?
-                    .to_string();
+                let desc = tlk.get_from_str_ref(desc_ref).ok().flatten()?.to_string();
                 Some((desc_ref, desc))
             });
 

@@ -14,7 +14,7 @@ use crate::{
 
 type SpellLevel = Option<std::num::NonZeroU8>;
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SpellLevels {
     pub bard: SpellLevel,
     pub cleric: SpellLevel,
@@ -26,7 +26,7 @@ pub struct SpellLevels {
     pub innate: SpellLevel,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Spell {
     pub label: String,
     pub name: TlkStringRef,
@@ -37,12 +37,7 @@ pub struct Spell {
 
 pub type SpellId = usize;
 
-fn join_path(base: &Path, paths: &[&str]) -> PathBuf {
-    let paths = paths.join(std::path::MAIN_SEPARATOR_STR);
-    base.join(paths)
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SpellRecord {
     pub spells: HashMap<SpellId, Spell>,
 }
@@ -54,7 +49,7 @@ impl SpellRecord {
     ) -> Result<Self, Error> {
         let file_name = "spells.2da";
 
-        let file_path = join_path(
+        let file_path = super::join_path(
             game_dir,
             &["campaigns", "westgate_campaign", "2da", file_name],
         );

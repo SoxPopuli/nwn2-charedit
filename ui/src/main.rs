@@ -23,6 +23,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub(crate) fn join_path(base: &Path, paths: &[&str]) -> PathBuf {
+    let paths = paths.join(std::path::MAIN_SEPARATOR_STR);
+    base.join(paths)
+}
+
 fn open_file(path: &Path) -> Result<Gff, Error> {
     let ext = path.extension().and_then(|x| x.to_str());
 
