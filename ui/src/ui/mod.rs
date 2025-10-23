@@ -1,5 +1,6 @@
 pub mod select_file;
 pub mod settings;
+pub mod panels;
 
 pub use self::{
     select_file::{Message as SelectFileMessage, State as SelectFileState},

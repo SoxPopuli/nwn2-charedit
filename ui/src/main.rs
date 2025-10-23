@@ -209,9 +209,9 @@ fn view_class_spells<'a>(
 
 #[derive(Debug)]
 struct App {
-    save_file: Option<SaveFile>,
-    settings: ui::SettingsState,
-    select_file: ui::SelectFileState,
+    pub save_file: Option<SaveFile>,
+    pub settings: ui::SettingsState,
+    pub select_file: ui::SelectFileState,
 }
 impl App {
     fn title() -> &'static str {
