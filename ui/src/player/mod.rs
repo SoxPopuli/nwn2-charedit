@@ -1,6 +1,7 @@
 pub mod player_class;
+pub mod feat_list;
 
-use crate::{Tlk, error::Error, field_ref::FieldRef, two_d_array};
+use crate::{error::Error, field_ref::FieldRef, player::feat_list::FeatList, two_d_array, Tlk};
 use nwn_lib::files::gff::{field::Field, r#struct::Struct};
 pub use player_class::PlayerClass;
 
@@ -165,6 +166,7 @@ make_builder! {
         cha: FieldRef<u8>,
         good_evil: FieldRef<u8>,
         lawful_chaotic: FieldRef<u8>,
+        feats: FeatList,
     }
 }
 
@@ -201,6 +203,7 @@ impl PlayerBuilder {
                 good_evil: unwrap_field!(good_evil),
                 lawful_chaotic: unwrap_field!(lawful_chaotic),
             },
+            feats: unwrap_field!(feats),
         })
     }
 }
@@ -214,6 +217,7 @@ pub struct Player {
     pub classes: Vec<PlayerClass>,
     pub attributes: Attributes,
     pub alignment: Alignment,
+    pub feats: FeatList,
 }
 
 impl Player {
@@ -270,6 +274,10 @@ impl Player {
                         .collect::<Result<Vec<_>, _>>()?;
 
                     player_builder.classes(classes);
+                }
+                "FeatList" => {
+                    let feats = FeatList::from_field(field.clone())?;
+                    player_builder.feats(feats);
                 }
 
                 _ => {}

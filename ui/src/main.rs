@@ -12,9 +12,11 @@ use crate::{
     error::Error,
     player::{Player, PlayerClass},
     two_d_array::FileReader2DA,
+    ui::settings::GameResources,
 };
 use iced::{
-    widget::{button, column, row, text, vertical_space, Column}, Task
+    Task,
+    widget::{Column, button, column, row, text, vertical_space},
 };
 use nwn_lib::files::gff::Gff;
 use std::{
@@ -61,6 +63,7 @@ enum Message {
     NoMsg,
     FileSelected(PathBuf),
     Settings(ui::SettingsMessage),
+    Character(ui::CharacterMessage),
     OpenSettings,
     OpenFileSelector,
     FileSelector(ui::SelectFileMessage),
@@ -99,13 +102,11 @@ fn menu_button(text: &str) -> iced::widget::Button<'_, Message> {
 pub type Tlk = nwn_lib::files::tlk::Tlk<BufReader<File>>;
 
 #[derive(Debug)]
-pub struct SaveFile {
-    pub file: Gff,
-    pub players: Vec<Player>,
-}
+pub struct SaveFile(pub Gff);
 impl SaveFile {
-    pub fn new(file: Gff, tlk: &Tlk, reader_2da: &mut FileReader2DA) -> Self {
-        let player_list = file
+    pub fn get_players(&self, tlk: &Tlk, reader_2da: &mut FileReader2DA) -> Vec<Player> {
+        let player_list = self
+            .0
             .root
             .bfs_iter()
             .find(|x| x.has_label("Mod_PlayerList"))
@@ -114,20 +115,18 @@ impl SaveFile {
         let lock = player_list.read().unwrap();
         let player_list = lock.field.expect_list().unwrap();
 
-        let players = player_list
+        player_list
             .iter()
             .map(|x| Player::new(tlk, reader_2da, x))
             .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-
-        Self { file, players }
+            .unwrap()
     }
 
     pub fn save_changes<W>(&mut self, output: &mut W) -> Result<(), Error>
     where
         W: std::io::Write,
     {
-        Ok(self.file.write(output)?)
+        Ok(self.0.write(output)?)
     }
 }
 
@@ -178,8 +177,10 @@ fn view_class_spells<'a>(
 
     for (level, spells_known) in spells {
         let spells = spells_known.spells.iter().map(|spell| {
-            let spell = spell_record.spells.get(&(spell.0 as usize)).
-                unwrap_or_else(|| panic!("{}: {} not found", spell, spell.0));
+            let spell = spell_record
+                .spells
+                .get(&(spell.0 as usize))
+                .unwrap_or_else(|| panic!("{}: {} not found", spell, spell.0));
 
             let image: Element<'_> = match spell.icon.as_ref() {
                 Some(i) => iced::widget::image(i).width(40.0).into(),
@@ -191,11 +192,9 @@ fn view_class_spells<'a>(
                 None => vertical_space().into(),
             };
 
-            row![
-                image,
-                text(&spell.name.data).width(80.0),
-                desc,
-            ].spacing(16).into()
+            row![image, text(&spell.name.data).width(80.0), desc,]
+                .spacing(16)
+                .into()
         });
 
         let spells = iced::widget::Column::from_iter(spells).spacing(16.0);
@@ -210,6 +209,7 @@ fn view_class_spells<'a>(
 #[derive(Debug)]
 struct App {
     pub save_file: Option<SaveFile>,
+    pub characters: ui::CharacterState,
     pub settings: ui::SettingsState,
     pub select_file: ui::SelectFileState,
 }
@@ -225,6 +225,7 @@ impl App {
     fn init() -> (Self, Task<Message>) {
         let this = App {
             save_file: None,
+            characters: Default::default(),
             settings: ui::SettingsState::from_file_or_default(),
             select_file: ui::SelectFileState::default(),
         };
@@ -237,16 +238,21 @@ impl App {
             Message::NoMsg => {}
             Message::FileSelected(path) => match open_file(&path) {
                 Ok(save) => {
-                    let save_file = match self.settings.game_resources.as_mut() {
-                        Some(g) => SaveFile::new(save, &g.tlk, &mut g.file_reader),
+                    match self.settings.game_resources.as_mut() {
+                        Some(g) => {
+                            let save_file = SaveFile(save);
+
+                            self.characters = ui::character::State::new(
+                                save_file.get_players(&g.tlk, &mut g.file_reader),
+                            );
+                            self.save_file = Some(save_file);
+                        }
                         None => {
                             return show_error_popup_task(
                                 "Couldn't find game resources, is Game Directory set?".to_string(),
                             );
                         }
                     };
-
-                    self.save_file = Some(save_file);
                 }
                 Err(e) => show_error_popup(format!("Failed to open save file: {e}")),
             },
@@ -273,6 +279,9 @@ impl App {
             }
             Message::FileSelector(m) => {
                 return self.select_file.update(m);
+            }
+            Message::Character(msg) => {
+                self.characters.update(msg);
             }
         }
 
@@ -341,22 +350,23 @@ impl App {
     }
 
     fn view(&self) -> Element<'_> {
-        let names = match &self.save_file {
-            Some(save) => save.players.iter().map(|x| self.view_player(x)).collect(),
-            None => Vec::new(),
-        };
-
         let body = if self.settings.active {
             self.settings.view().map(Message::Settings)
         } else if self.select_file.active {
             self.select_file.view().map(Message::FileSelector)
         } else {
-            Column::with_children(names)
-                .padding(iced::Padding {
-                    top: 0.0,
-                    ..(16.0).into()
-                })
-                .into()
+            let (spell_record, feat_record) = match &self.settings.game_resources {
+                Some(GameResources {
+                    spell_record,
+                    feat_record,
+                    ..
+                }) => (spell_record, feat_record),
+                None => return text("Game Directory not set correctly").into(),
+            };
+
+            self.characters
+                .view(spell_record, feat_record)
+                .map(Message::Character)
         };
 
         column![self.menu(), body].into()

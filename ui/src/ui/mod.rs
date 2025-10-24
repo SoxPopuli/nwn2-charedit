@@ -1,10 +1,11 @@
 pub mod select_file;
 pub mod settings;
-pub mod panels;
+pub mod character;
 
 pub use self::{
     select_file::{Message as SelectFileMessage, State as SelectFileState},
     settings::{Message as SettingsMessage, State as SettingsState},
+    character::{Message as CharacterMessage, State as CharacterState},
 };
 
 use iced::{Element, Length, widget::container};
