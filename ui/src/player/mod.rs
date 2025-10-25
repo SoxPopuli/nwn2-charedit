@@ -1,7 +1,7 @@
-pub mod player_class;
 pub mod feat_list;
+pub mod player_class;
 
-use crate::{error::Error, field_ref::FieldRef, player::feat_list::FeatList, two_d_array, Tlk};
+use crate::{Tlk, error::Error, field_ref::FieldRef, player::feat_list::FeatList, two_d_array};
 use nwn_lib::files::gff::{field::Field, r#struct::Struct};
 pub use player_class::PlayerClass;
 

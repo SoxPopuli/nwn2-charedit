@@ -118,7 +118,8 @@ impl State {
             let input = iced_aw::number_input(value, ..=u8::MAX, move |x| Message::StatChanged {
                 stat,
                 new_value: x,
-            }).ignore_buttons(true);
+            })
+            .ignore_buttons(true);
 
             grid_row![text(name), input]
         };

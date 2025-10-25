@@ -67,6 +67,7 @@ enum Message {
     OpenSettings,
     OpenFileSelector,
     FileSelector(ui::SelectFileMessage),
+    SaveFile,
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -283,16 +284,20 @@ impl App {
             Message::Character(msg) => {
                 self.characters.update(msg);
             }
+            Message::SaveFile => {
+
+            }
         }
 
         Task::none()
     }
 
     fn menu(&self) -> Element<'_> {
+        let open_file = menu_button("Open").on_press(Message::OpenFileSelector);
+        let save = menu_button("Save").on_press(Message::SaveFile);
         let settings = menu_button("Settings").on_press(Message::OpenSettings);
 
-        let open_file = menu_button("Open").on_press(Message::OpenFileSelector);
-        let menu_bar = row![open_file, settings].spacing(8);
+        let menu_bar = row![open_file, save, settings].spacing(8);
 
         column![menu_bar, iced::widget::horizontal_rule(4)]
             .spacing(4)

@@ -14,7 +14,7 @@ pub enum Error {
     ColumnMismatch {
         column1: Vec<String>,
         column2: Vec<String>,
-    }
+    },
 }
 
 impl std::fmt::Display for Error {

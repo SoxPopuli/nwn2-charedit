@@ -1,4 +1,3 @@
-use common::int_enum;
 use super::{
     Header,
     label::{LABEL_SIZE, Label},
@@ -18,6 +17,7 @@ use crate::{
         write_all,
     },
 };
+use common::int_enum;
 use rust_utils::collect_vec::CollectVecResult;
 use std::{
     collections::HashMap,

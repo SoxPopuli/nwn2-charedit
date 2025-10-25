@@ -23,16 +23,20 @@ impl DataTable {
     }
 
     /// Find column index for each name
-    pub fn find_column_indices<'a, const N: usize>(&self, names: [&'a str; N]) -> Result<[usize; N], &'a str> {
-        let column_map = HashMap::<_,_>::from_iter(
-            self.columns.iter()
-            .enumerate()
-            .map(|(i, x)| (x.as_str(), i))
+    pub fn find_column_indices<'a, const N: usize>(
+        &self,
+        names: [&'a str; N],
+    ) -> Result<[usize; N], &'a str> {
+        let column_map = HashMap::<_, _>::from_iter(
+            self.columns
+                .iter()
+                .enumerate()
+                .map(|(i, x)| (x.as_str(), i)),
         );
 
         let mut output = [0; N];
 
-        for (i,n) in names.iter().enumerate() {
+        for (i, n) in names.iter().enumerate() {
             output[i] = column_map.get(n).copied().ok_or(*n)?;
         }
 
