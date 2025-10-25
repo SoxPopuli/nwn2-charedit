@@ -8,18 +8,31 @@ use iced::{
         row, scrollable, text, vertical_space,
     },
 };
-use iced_aw::{TabLabel, tabs::Tabs};
+use iced_aw::{TabLabel, grid, grid_row, tabs::Tabs};
 use itertools::Itertools;
+use nwn_lib::files::gff::field::Field;
 
 use crate::{
     feat::{Feat, FeatRecord},
+    field_ref::FieldRef,
     player::{Player, PlayerClass},
     spell::SpellRecord,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stat {
+    Strength,
+    Dexterity,
+    Constitution,
+    Intelligence,
+    Wisdom,
+    Charisma,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     TabSelected(TabMode),
+    StatChanged { stat: Stat, new_value: u8 },
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -69,6 +82,26 @@ impl State {
             Message::TabSelected(mode) => {
                 self.tab_mode = mode;
             }
+            Message::StatChanged { stat, new_value } => {
+                let player = self.players.get_mut(self.selected_player);
+                let player = match player {
+                    Some(player) => player,
+                    None => return,
+                };
+
+                let set_stat = |field_ref: &mut FieldRef<u8>| {
+                    field_ref.set(new_value, |x| Field::Byte(*x));
+                };
+
+                match stat {
+                    Stat::Strength => set_stat(&mut player.attributes.str),
+                    Stat::Dexterity => set_stat(&mut player.attributes.dex),
+                    Stat::Constitution => set_stat(&mut player.attributes.con),
+                    Stat::Intelligence => set_stat(&mut player.attributes.int),
+                    Stat::Wisdom => set_stat(&mut player.attributes.wis),
+                    Stat::Charisma => set_stat(&mut player.attributes.cha),
+                }
+            }
         }
     }
 
@@ -81,9 +114,40 @@ impl State {
         let race = player.race.to_string();
         let name = format!("{} {}", player.first_name.get(), player.last_name.get());
 
-        column![text(name), text(format!("Level {level} {race}"))]
-            .padding(16)
-            .into()
+        let stat_row = |name, value, stat| {
+            let input = iced_aw::number_input(value, ..=u8::MAX, move |x| Message::StatChanged {
+                stat,
+                new_value: x,
+            }).ignore_buttons(true);
+
+            grid_row![text(name), input]
+        };
+
+        let strength = player.attributes.str.get();
+        let dexterity = player.attributes.dex.get();
+        let constitution = player.attributes.con.get();
+        let wisdom = player.attributes.wis.get();
+        let intelligence = player.attributes.int.get();
+        let charisma = player.attributes.cha.get();
+
+        let stat_grid = grid![
+            stat_row("Strength", strength, Stat::Strength),
+            stat_row("Dexterity", dexterity, Stat::Dexterity),
+            stat_row("Constitution", constitution, Stat::Constitution),
+            stat_row("Intelligence", intelligence, Stat::Intelligence),
+            stat_row("Wisdom", wisdom, Stat::Wisdom),
+            stat_row("Charisma", charisma, Stat::Charisma),
+        ]
+        .column_spacing(16);
+
+        column![
+            text(name),
+            text(format!("Level {level} {race}")),
+            vertical_space().height(32),
+            stat_grid
+        ]
+        .padding(16)
+        .into()
     }
 
     fn view_feats<'a>(&'a self, player: &'a Player, feat_record: &'a FeatRecord) -> Element<'a> {
