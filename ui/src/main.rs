@@ -16,7 +16,7 @@ use crate::{
 };
 use iced::{
     Task,
-    widget::{Column, button, column, row, text, vertical_space},
+    widget::{button, column, row, text, vertical_space},
 };
 use nwn_lib::files::gff::Gff;
 use std::{
