@@ -12,8 +12,8 @@ use crate::{
     error::Error, player::Player, two_d_array::FileReader2DA, ui::settings::GameResources,
 };
 use iced::{
-    Task,
-    widget::{button, column, row, text},
+    Length, Task,
+    widget::{button, column, horizontal_space, row, text},
 };
 use nwn_lib::files::gff::Gff;
 use std::{
@@ -64,6 +64,8 @@ enum Message {
     OpenFileSelector,
     FileSelector(ui::SelectFileMessage),
     SaveFile,
+    SaveWindow(ui::SaveMessage),
+    CloseFile,
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -86,7 +88,10 @@ fn menu_button(text: &str) -> iced::widget::Button<'_, Message> {
         };
 
         Style {
-            text_color: palette.text,
+            text_color: match status {
+                Status::Disabled => palette.text.scale_alpha(0.5),
+                _ => palette.text,
+            },
             background,
             border: Border::default().rounded(8.0),
             ..Default::default()
@@ -161,7 +166,7 @@ macro_rules! popup_opt {
     }};
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct App {
     pub save_file: Option<SaveFile>,
     pub characters: ui::CharacterState,
@@ -172,6 +177,12 @@ struct App {
 impl App {
     fn title() -> &'static str {
         env!("CARGO_BIN_NAME")
+    }
+
+    fn close_windows(&mut self) {
+        self.settings.close();
+        self.select_file.close();
+        self.save_window.close();
     }
 
     fn theme(&self) -> iced::Theme {
@@ -219,13 +230,15 @@ impl App {
                 self.settings.update(m);
             }
             Message::OpenSettings => {
+                self.close_windows();
                 self.settings.active = true;
-                self.select_file.active = false;
             }
             Message::OpenFileSelector => {
+                if self.settings.save_dir.is_some() {
+                    self.close_windows();
+                }
                 if let Some(dir) = &self.settings.save_dir {
                     self.select_file.open(dir);
-                    self.settings.close();
                 } else {
                     rfd::MessageDialog::new()
                         .set_level(rfd::MessageLevel::Info)
@@ -240,7 +253,21 @@ impl App {
                 self.characters.update(msg);
             }
             Message::SaveFile => {
-                self.save_window.active = true;
+                if self.save_file.is_some() {
+                    self.close_windows();
+                }
+                if let Some(save) = &self.save_file {
+                    self.save_window.open(save);
+                }
+            }
+            Message::SaveWindow(msg) => self.save_window.update(msg),
+            Message::CloseFile => {
+                let settings = std::mem::take(&mut self.settings);
+
+                *self = App {
+                    settings,
+                    ..Default::default()
+                }
             }
         }
 
@@ -249,10 +276,17 @@ impl App {
 
     fn menu(&self) -> Element<'_> {
         let open_file = menu_button("Open").on_press(Message::OpenFileSelector);
-        let save = menu_button("Save").on_press(Message::SaveFile);
+        let save =
+            menu_button("Save").on_press_maybe(self.save_file.as_ref().map(|_| Message::SaveFile));
         let settings = menu_button("Settings").on_press(Message::OpenSettings);
 
-        let menu_bar = row![open_file, save, settings].spacing(8);
+        let mut menu_bar = row![open_file, save, settings].spacing(8);
+
+        if self.save_file.is_some() {
+            menu_bar = menu_bar
+                .push(horizontal_space().width(Length::Fill))
+                .push(menu_button("Close").on_press(Message::CloseFile));
+        }
 
         column![menu_bar, iced::widget::horizontal_rule(4)]
             .spacing(4)
@@ -268,21 +302,22 @@ impl App {
     fn view(&self) -> Element<'_> {
         let body = if self.settings.active {
             self.settings.view().map(Message::Settings)
+        } else if self.save_window.active {
+            self.save_window.view().map(Message::SaveWindow)
         } else if self.select_file.active {
             self.select_file.view().map(Message::FileSelector)
         } else {
-            let (spell_record, feat_record) = match &self.settings.game_resources {
+            match &self.settings.game_resources {
                 Some(GameResources {
                     spell_record,
                     feat_record,
                     ..
-                }) => (spell_record, feat_record),
-                None => return text("Game Directory not set correctly").into(),
-            };
-
-            self.characters
-                .view(spell_record, feat_record)
-                .map(Message::Character)
+                }) => self
+                    .characters
+                    .view(spell_record, feat_record)
+                    .map(Message::Character),
+                None => text("Game Directory not set correctly").into(),
+            }
         };
 
         column![self.menu(), body].into()

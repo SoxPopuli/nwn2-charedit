@@ -128,6 +128,6 @@ impl State {
             .spacing(16),
         ];
 
-        super::bordered(body.into())
+        super::bordered_padded(body).into()
     }
 }

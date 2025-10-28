@@ -2805,6 +2805,7 @@ name = "nwn2-charedit-ui"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "chrono",
  "common",
  "dds",
  "iced",

@@ -3,7 +3,10 @@ pub mod save_file;
 pub mod select_file;
 pub mod settings;
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use crate::error::Error;
 
@@ -15,8 +18,9 @@ pub use self::{
 };
 
 use iced::{Element, Length, widget::container};
+use regex::Regex;
 
-pub fn bordered<'a, Msg>(view: Element<'a, Msg>) -> Element<'a, Msg>
+pub fn bordered<'a, Msg>(view: impl Into<Element<'a, Msg>>) -> iced::widget::Container<'a, Msg>
 where
     Msg: 'a,
 {
@@ -38,7 +42,16 @@ where
             }
         });
 
-    container(outer).padding(24).into()
+    container(outer)
+}
+
+pub fn bordered_padded<'a, Msg>(
+    view: impl Into<Element<'a, Msg>>,
+) -> iced::widget::Container<'a, Msg>
+where
+    Msg: 'a,
+{
+    bordered(view).padding(24)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +79,13 @@ impl Date {
             hour: hour.parse().map_err(to_parse_error)?,
             minute: minute.parse().map_err(to_parse_error)?,
         })
+    }
+
+    pub fn hyphenated_string(&self) -> String {
+        format!(
+            "{}-{:02}-{:02}-{:02}-{:02}",
+            &self.year, &self.month, &self.day, &self.hour, &self.minute
+        )
     }
 
     pub fn date_string(&self) -> String {
@@ -107,13 +127,11 @@ pub struct SaveEntry {
 impl SaveEntry {
     pub fn new(
         path: impl Into<PathBuf>,
-        number: &str,
+        number: u32,
         date: Date,
         name: String,
         image: Vec<u8>,
     ) -> Result<Self, Error> {
-        let to_parse_error = |e: std::num::ParseIntError| Error::ParseError(e.to_string());
-
         let reader = std::io::BufReader::new(std::io::Cursor::new(image));
 
         let image =
@@ -129,7 +147,7 @@ impl SaveEntry {
         Ok(Self {
             path: path.into(),
             date,
-            number: number.parse().map_err(to_parse_error)?,
+            number,
             name,
             image,
         })
@@ -146,13 +164,26 @@ impl Ord for SaveEntry {
     }
 }
 
-pub fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
-    // 000003 - 06-10-2025-17-49
-    let re = {
-        let pattern = r"(?m)^0+(\d+) - (\d+)-(\d+)-(\d+)-(\d+)-(\d+)$";
-        std::sync::LazyLock::new(|| regex::Regex::new(pattern).expect("Failed to create regex"))
-    };
+// 000003 - 06-10-2025-17-49
+static SAVE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    let pattern = r"(?m)^0+(\d+) - (\d+)-(\d+)-(\d+)-(\d+)-(\d+)$";
+    Regex::new(pattern).expect("Failed to create regex")
+});
 
+pub fn get_save_folder_name(path: impl AsRef<str>) -> Option<(u32, Date)> {
+    let folder_name = path.as_ref();
+
+    let (_, [save_no, day, month, year, hour, minute]) =
+        SAVE_REGEX.captures(folder_name)?.extract();
+
+    let date =
+        Date::from_strings(day, month, year, hour, minute).expect("Failed to parse save date");
+    let save_no = save_no.parse().expect("Failed to parse save number");
+
+    Some((save_no, date))
+}
+
+pub fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
     let entries = save_dir
         .read_dir()?
         .filter_map(|d| {
@@ -163,16 +194,13 @@ pub fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
                 let file_name = d.file_name();
                 let file_name = file_name.to_str()?;
 
-                let (_, [save_no, day, month, year, hour, minute]) =
-                    re.captures(file_name)?.extract();
+                let (save_no, date) = get_save_folder_name(file_name)?;
 
                 let name = std::fs::read_to_string(d.path().join("savename.txt"))
                     .expect("Failed to read savename.txt");
 
                 let image =
                     std::fs::read(d.path().join("screen.tga")).expect("Failed to read screen.tga");
-
-                let date = Date::from_strings(day, month, year, hour, minute).unwrap();
 
                 Some(
                     SaveEntry::new(d.path(), save_no, date, name, image)

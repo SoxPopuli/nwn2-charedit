@@ -215,14 +215,14 @@ impl GameResources {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct State {
     pub active: bool,
     pub save_dir: Option<PathBuf>,
     pub game_resources: Option<GameResources>,
 
-    game_dir_temp: String,
-    save_dir_temp: String,
+    pub game_dir_temp: String,
+    pub save_dir_temp: String,
 }
 impl State {
     pub fn from_file_or_default() -> Self {
@@ -348,6 +348,6 @@ impl State {
         ]
         .spacing(8);
 
-        super::bordered(body.into())
+        super::bordered_padded(body).into()
     }
 }
