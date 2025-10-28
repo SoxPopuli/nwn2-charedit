@@ -9,14 +9,11 @@ mod two_d_array;
 mod ui;
 
 use crate::{
-    error::Error,
-    player::{Player, PlayerClass},
-    two_d_array::FileReader2DA,
-    ui::settings::GameResources,
+    error::Error, player::Player, two_d_array::FileReader2DA, ui::settings::GameResources,
 };
 use iced::{
     Task,
-    widget::{button, column, row, text, vertical_space},
+    widget::{button, column, row, text},
 };
 use nwn_lib::files::gff::Gff;
 use std::{
@@ -60,7 +57,6 @@ fn open_file(path: &Path) -> Result<Gff, Error> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum Message {
-    NoMsg,
     FileSelected(PathBuf),
     Settings(ui::SettingsMessage),
     Character(ui::CharacterMessage),
@@ -103,11 +99,14 @@ fn menu_button(text: &str) -> iced::widget::Button<'_, Message> {
 pub type Tlk = nwn_lib::files::tlk::Tlk<BufReader<File>>;
 
 #[derive(Debug)]
-pub struct SaveFile(pub Gff);
+pub struct SaveFile {
+    pub file: Gff,
+    pub path: PathBuf,
+}
 impl SaveFile {
     pub fn get_players(&self, tlk: &Tlk, reader_2da: &mut FileReader2DA) -> Vec<Player> {
         let player_list = self
-            .0
+            .file
             .root
             .bfs_iter()
             .find(|x| x.has_label("Mod_PlayerList"))
@@ -127,7 +126,7 @@ impl SaveFile {
     where
         W: std::io::Write,
     {
-        Ok(self.0.write(output)?)
+        Ok(self.file.write(output)?)
     }
 }
 
@@ -162,57 +161,13 @@ macro_rules! popup_opt {
     }};
 }
 
-fn view_class_spells<'a>(
-    class: &'a PlayerClass,
-    spell_record: &'a spell::SpellRecord,
-) -> Option<Element<'a>> {
-    use iced_aw::{Tabs, tab_bar::TabLabel};
-
-    if !class.is_caster {
-        return None;
-    }
-
-    let mut tabs = Tabs::new(|_| Message::NoMsg);
-
-    let spells = class.spell_known_list.iter().flatten().enumerate();
-
-    for (level, spells_known) in spells {
-        let spells = spells_known.spells.iter().map(|spell| {
-            let spell = spell_record
-                .spells
-                .get(&(spell.0 as usize))
-                .unwrap_or_else(|| panic!("{}: {} not found", spell, spell.0));
-
-            let image: Element<'_> = match spell.icon.as_ref() {
-                Some(i) => iced::widget::image(i).width(40.0).into(),
-                None => vertical_space().width(40.0).into(),
-            };
-
-            let desc: Element<'_> = match spell.desc.as_ref() {
-                Some(x) => text(&x.data).into(),
-                None => vertical_space().into(),
-            };
-
-            row![image, text(&spell.name.data).width(80.0), desc,]
-                .spacing(16)
-                .into()
-        });
-
-        let spells = iced::widget::Column::from_iter(spells).spacing(16.0);
-        let spells = iced::widget::scrollable(spells);
-
-        tabs = tabs.push(level, TabLabel::Text(level.to_string()), spells);
-    }
-
-    Some(tabs.into())
-}
-
 #[derive(Debug)]
 struct App {
     pub save_file: Option<SaveFile>,
     pub characters: ui::CharacterState,
     pub settings: ui::SettingsState,
     pub select_file: ui::SelectFileState,
+    pub save_window: ui::SaveState,
 }
 impl App {
     fn title() -> &'static str {
@@ -229,6 +184,7 @@ impl App {
             characters: Default::default(),
             settings: ui::SettingsState::from_file_or_default(),
             select_file: ui::SelectFileState::default(),
+            save_window: ui::SaveState::default(),
         };
 
         (this, Task::none())
@@ -236,12 +192,11 @@ impl App {
 
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
-            Message::NoMsg => {}
             Message::FileSelected(path) => match open_file(&path) {
                 Ok(save) => {
                     match self.settings.game_resources.as_mut() {
                         Some(g) => {
-                            let save_file = SaveFile(save);
+                            let save_file = SaveFile { file: save, path };
 
                             self.characters = ui::character::State::new(
                                 save_file.get_players(&g.tlk, &mut g.file_reader),
@@ -285,7 +240,7 @@ impl App {
                 self.characters.update(msg);
             }
             Message::SaveFile => {
-
+                self.save_window.active = true;
             }
         }
 
@@ -308,50 +263,6 @@ impl App {
                 ..Default::default()
             })
             .into()
-    }
-
-    fn view_player<'a>(&'a self, p: &'a Player) -> Element<'a> {
-        fn row(name: &str, value: impl std::fmt::Display) -> iced_aw::GridRow<'_, Message> {
-            iced_aw::grid_row![text(format!("{name}:")), text(value.to_string())]
-        }
-
-        let classes = {
-            let classes = p
-                .classes
-                .iter()
-                .map(|class| format!("{} ({})", class.class.value, class.level.value))
-                .collect::<Vec<_>>();
-
-            let c = classes.join(" | ");
-
-            text(c)
-        };
-
-        let stats = column![
-            text(format!("{} {}", p.first_name.get(), p.last_name.get())),
-            text(p.gender.to_string()),
-            text(p.race.to_string()),
-            classes,
-            iced_aw::grid![
-                row("Strength", p.attributes.str.get()),
-                row("Dexterity", p.attributes.dex.get()),
-                row("Constitution", p.attributes.con.get()),
-                row("Intelligence", p.attributes.int.get()),
-                row("Wisdom", p.attributes.wis.get()),
-                row("Charisma", p.attributes.cha.get()),
-                row("Alignment", &p.alignment)
-            ]
-            .column_spacing(20),
-        ];
-
-        let spells_panel = p.classes.iter().find_map(|x| {
-            view_class_spells(
-                x,
-                &self.settings.game_resources.as_ref().unwrap().spell_record,
-            )
-        });
-
-        row![stats].push_maybe(spells_panel).into()
     }
 
     fn view(&self) -> Element<'_> {
