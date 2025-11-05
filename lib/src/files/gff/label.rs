@@ -26,6 +26,10 @@ impl Label {
         writer.write_all(&self.to_array()).into_write_error()
     }
 
+    pub fn from_string(s: &str) -> Self {
+        Label(s.into())
+    }
+
     pub fn new(data: [u8; LABEL_SIZE]) -> Result<Self, Error> {
         let strend = data.into_iter().position(|x| x == 0);
         let slice = match strend {
