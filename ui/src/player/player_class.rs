@@ -4,7 +4,8 @@ use crate::{
     ids::{class::Class, spell::Spell},
 };
 use nwn_lib::files::gff::{
-    field::Field,
+    field::{Field, LabeledField},
+    label::Label,
     r#struct::{Struct, StructField},
 };
 use std::fmt::Display;
@@ -41,6 +42,48 @@ impl SpellKnownList {
             list_ref: list_field,
             spells,
         })
+    }
+
+    fn create_spell_struct(Spell(spell): Spell) -> Struct {
+        let label = Label::from_string("Spell");
+        let field = StructField::new(LabeledField {
+            label,
+            field: Field::Word(spell),
+        });
+
+        Struct {
+            id: 3,
+            original_data_or_data_offset: u32::MAX,
+            fields: vec![field],
+        }
+    }
+
+    pub fn add_spell(&mut self, spell: Spell) {
+        let mut field_lock = self.list_ref.write().unwrap();
+
+        match &mut field_lock.field {
+            Field::List(lst) => {
+                let s = Self::create_spell_struct(spell);
+
+                lst.push(s);
+            }
+            x => panic!("Unexpected field: {x:?}"),
+        }
+
+        self.spells.push(spell);
+    }
+
+    pub fn remove_spell(&mut self, index: usize) {
+        let mut field_lock = self.list_ref.write().unwrap();
+
+        match &mut field_lock.field {
+            Field::List(lst) => {
+                lst.remove(index);
+            }
+            x => panic!("Unexpected field: {x:?}"),
+        }
+
+        self.spells.remove(index);
     }
 }
 
