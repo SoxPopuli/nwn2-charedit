@@ -107,6 +107,7 @@ pub type Tlk = nwn_lib::files::tlk::Tlk<BufReader<File>>;
 pub struct SaveFile {
     pub file: Gff,
     pub path: PathBuf,
+    pub save_dir: PathBuf,
 }
 impl SaveFile {
     pub fn get_players(&self, tlk: &Tlk, reader_2da: &mut FileReader2DA) -> Vec<Player> {
@@ -127,7 +128,7 @@ impl SaveFile {
             .unwrap()
     }
 
-    pub fn save_changes<W>(&mut self, output: &mut W) -> Result<(), Error>
+    pub fn save_changes<W>(&self, output: &mut W) -> Result<(), Error>
     where
         W: std::io::Write,
     {
@@ -207,7 +208,13 @@ impl App {
                 Ok(save) => {
                     match self.settings.game_resources.as_mut() {
                         Some(g) => {
-                            let save_file = SaveFile { file: save, path };
+                            let save_dir =
+                                path.parent().expect("Failed to get save dir").to_path_buf();
+                            let save_file = SaveFile {
+                                file: save,
+                                path,
+                                save_dir,
+                            };
 
                             self.characters = ui::character::State::new(
                                 save_file.get_players(&g.tlk, &mut g.file_reader),
@@ -260,7 +267,11 @@ impl App {
                     self.save_window.open(save);
                 }
             }
-            Message::SaveWindow(msg) => self.save_window.update(msg),
+            Message::SaveWindow(msg) => {
+                if let Some(ref save_file) = self.save_file {
+                    self.save_window.update(msg, save_file);
+                }
+            }
             Message::CloseFile => {
                 let settings = std::mem::take(&mut self.settings);
 

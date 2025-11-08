@@ -82,10 +82,15 @@ impl Date {
     }
 
     pub fn hyphenated_string(&self) -> String {
-        format!(
-            "{}-{:02}-{:02}-{:02}-{:02}",
-            &self.year, &self.month, &self.day, &self.hour, &self.minute
-        )
+        let Self {
+            day,
+            month,
+            year,
+            hour,
+            minute,
+        } = self;
+
+        format!("{day:02}-{month:02}-{year}-{hour:02}-{minute:02}")
     }
 
     pub fn date_string(&self) -> String {
