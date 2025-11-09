@@ -56,15 +56,15 @@ impl FeatList {
     }
 
     pub fn remove_feat(&mut self, index: usize) {
-       let mut lock = self.list_ref.field.write().unwrap();
+        let mut lock = self.list_ref.field.write().unwrap();
 
-       match &mut lock.field {
-           Field::List(lst) => {
-               lst.remove(index);
-           }
-           x => panic!("Unexpected field: {x:?}"),
-       };
+        match &mut lock.field {
+            Field::List(lst) => {
+                lst.remove(index);
+            }
+            x => panic!("Unexpected field: {x:?}"),
+        };
 
-       self.list_ref.value.remove(index);
+        self.list_ref.value.remove(index);
     }
 }

@@ -177,7 +177,7 @@ fn get_tlk_file(game_dir: &Path) -> Result<Tlk, Error> {
 pub struct GameResources {
     pub game_dir: PathBuf,
     pub tlk: Tlk,
-    pub icon_paths: HashMap<IconName, IconPath>,
+    // pub icon_paths: HashMap<IconName, IconPath>,
     pub feat_record: FeatRecord,
     pub spell_record: SpellRecord,
     pub file_reader: FileReader2DA,
@@ -207,7 +207,7 @@ impl GameResources {
         Ok(Self {
             game_dir: game_dir.into(),
             tlk,
-            icon_paths,
+            // icon_paths,
             feat_record,
             spell_record,
             file_reader: reader,

@@ -99,16 +99,6 @@ impl SpellRecord {
             let desc_ref = row.get(desc_idx)?.as_deref()?;
             let desc_ref = desc_ref.parse().ok();
 
-            let name = tlk.get_from_str_ref(name_ref).ok().flatten()?.to_string();
-
-            let desc = desc_ref.and_then(|desc_ref| {
-                let desc = tlk
-                    .get_from_str_ref(desc_ref)
-                    .expect("Couldn't find spell description in tlk file")?
-                    .to_string();
-                Some((desc_ref, desc))
-            });
-
             let icon = row
                 .get(icon_idx)?
                 .as_deref()
@@ -145,14 +135,8 @@ impl SpellRecord {
             };
 
             Some(Spell {
-                name: TlkStringRef {
-                    id: name_ref,
-                    data: name,
-                },
-                desc: desc.map(|(desc_ref, desc)| TlkStringRef {
-                    id: desc_ref,
-                    data: desc,
-                }),
+                name: TlkStringRef::from_id(tlk, name_ref).ok()?,
+                desc: desc_ref.and_then(|r| TlkStringRef::from_id(tlk, r).ok()),
                 label,
                 icon,
                 spell_levels,

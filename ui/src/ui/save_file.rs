@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::{Datelike, Timelike};
 use iced::{
-    widget::{button, column, horizontal_space, row, text_input, text, vertical_space}, Length
+    Length,
+    widget::{button, column, horizontal_space, row, text, text_input, vertical_space},
 };
 
 use crate::{SaveFile, error::Error, ui::get_save_folder_name};
