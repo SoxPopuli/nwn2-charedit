@@ -1,7 +1,7 @@
 use crate::ui::SaveEntry;
 use iced::{
     Length, Task,
-    widget::{Column, button, column, container, horizontal_space, row, text, vertical_space},
+    widget::{Column, button, column, horizontal_space, row, text, vertical_space},
 };
 use std::path::Path;
 
@@ -82,26 +82,17 @@ impl State {
         ));
 
         let items = row![image, label].width(Length::Fill).padding(8.0);
-        let items = iced::widget::mouse_area(items)
-            .on_enter(Message::MouseEntered(index))
-            .on_exit(Message::MouseExited(index))
-            .on_press(Message::EntrySelected(index));
 
-        container(items)
-            .style(move |theme: &iced::Theme| {
-                let p = theme.extended_palette();
-                container::Style {
-                    background: if self.selected_entry == Some(index) {
-                        Some(iced::Background::Color(p.primary.strong.color))
-                    } else if self.hovered_entry == Some(index) {
-                        Some(iced::Background::Color(p.background.strong.color))
-                    } else {
-                        None
-                    },
-                    ..Default::default()
-                }
-            })
-            .into()
+        super::hoverable(
+            items,
+            index,
+            self.selected_entry,
+            self.hovered_entry,
+            Message::MouseEntered,
+            Message::MouseExited,
+            Message::EntrySelected,
+        )
+        .into()
     }
 
     pub fn view(&self) -> Element<'_> {

@@ -1,0 +1,109 @@
+#![allow(unstable_name_collisions)]
+
+use crate::{
+    feat::{Feat, FeatRecord},
+    player::Player,
+    ui::hoverable,
+};
+use iced::{
+    Length,
+    widget::{Column, Image, container, horizontal_rule, horizontal_space, row, scrollable, text},
+};
+use itertools::Itertools;
+
+fn bordered_container<'a>(content: impl Into<Element<'a>>) -> iced::widget::Container<'a, Message> {
+    fn style(theme: &iced::Theme) -> container::Style {
+        let palette = theme.palette();
+
+        iced::widget::container::Style {
+            border: iced::Border {
+                width: 1.0,
+                color: palette.text,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    container(content).style(style)
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct State {
+    selected_entry: Option<usize>,
+    hovered_entry: Option<usize>,
+}
+impl State {
+    pub fn update(&mut self, msg: Message) {
+        match msg {
+            Message::MouseEntered(i) => {
+                self.hovered_entry = Some(i);
+            }
+            Message::MouseExited(i) => {
+                if Some(i) == self.hovered_entry {
+                    self.hovered_entry = None;
+                }
+            }
+            Message::EntrySelected(i) => {
+                self.selected_entry = Some(i);
+            }
+        }
+    }
+
+    fn view_feat<'a>(&self, index: usize, feat: &'a Feat) -> Element<'a> {
+        let icon: Element<'_> = match &feat.icon {
+            Some(icon) => Image::new(icon).into(),
+            None => horizontal_space().width(40).into(),
+        };
+
+        let desc = feat
+            .desc
+            .as_ref()
+            .map(|x| x.data.as_str())
+            .unwrap_or_default();
+
+        let item = row![icon, text(&feat.name.data).width(120), text(desc),]
+            .padding(16)
+            .spacing(16);
+
+        hoverable(
+            item,
+            index,
+            self.selected_entry,
+            self.hovered_entry,
+            Message::MouseEntered,
+            Message::MouseExited,
+            Message::EntrySelected,
+        )
+        .width(Length::Fill)
+        .into()
+    }
+
+    pub fn view<'a>(&self, player: &'a Player, feat_record: &'a FeatRecord) -> Element<'a> {
+        let feats = {
+            let feats = player.feats.list_ref.get();
+            let feats = feats
+                .iter()
+                .map(|x| x.get())
+                .filter_map(|x| {
+                    let id: usize = (*x).into();
+                    feat_record.feats.get(&id)
+                })
+                .enumerate()
+                .map(|(i, feat)| self.view_feat(i, feat))
+                .intersperse_with(|| horizontal_rule(1).into());
+            bordered_container(Column::from_iter(feats))
+        };
+
+        scrollable(container(feats).padding(32)).into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Message {
+    MouseEntered(usize),
+    MouseExited(usize),
+    EntrySelected(usize),
+}
+
+pub type Element<'a> = iced::Element<'a, Message>;

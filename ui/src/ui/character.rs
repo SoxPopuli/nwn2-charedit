@@ -1,9 +1,11 @@
 #![allow(unstable_name_collisions)]
 
+mod feat_panel;
+
 use iced::{
     Length,
     widget::{
-        Column, column, container, horizontal_rule, horizontal_space,
+        Column, column, container, horizontal_rule,
         image::{Handle, Image},
         row, scrollable, text, vertical_space,
     },
@@ -13,7 +15,7 @@ use itertools::Itertools;
 use nwn_lib::files::gff::field::Field;
 
 use crate::{
-    feat::{Feat, FeatRecord},
+    feat::FeatRecord,
     field_ref::FieldRef,
     player::{Player, PlayerClass},
     spell::SpellRecord,
@@ -33,6 +35,7 @@ pub enum Stat {
 pub enum Message {
     TabSelected(TabMode),
     StatChanged { stat: Stat, new_value: u8 },
+    FeatPanel(feat_panel::Message),
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -67,6 +70,8 @@ pub struct State {
     pub selected_player: usize,
     pub players: Vec<Player>,
     pub tab_mode: TabMode,
+
+    feat_panel: feat_panel::State,
 }
 impl State {
     pub fn new(players: Vec<Player>) -> Self {
@@ -74,6 +79,7 @@ impl State {
             tab_mode: TabMode::Stats,
             selected_player: 0,
             players,
+            feat_panel: Default::default(),
         }
     }
 
@@ -102,6 +108,7 @@ impl State {
                     Stat::Charisma => set_stat(&mut player.attributes.cha),
                 }
             }
+            Message::FeatPanel(m) => self.feat_panel.update(m),
         }
     }
 
@@ -110,6 +117,13 @@ impl State {
             .classes
             .iter()
             .fold(0, |acc, class| acc + class.level.get());
+
+        let classes = player
+            .classes
+            .iter()
+            .map(|c| format!("{} ({})", c.class.get(), c.level.get()))
+            .reduce(|acc, x| format!("{acc} | {x}"))
+            .unwrap_or("None".to_string());
 
         let race = player.race.to_string();
         let name = format!("{} {}", player.first_name.get(), player.last_name.get());
@@ -144,47 +158,12 @@ impl State {
         column![
             text(name),
             text(format!("Level {level} {race}")),
+            text(classes),
             vertical_space().height(32),
             stat_grid
         ]
         .padding(16)
         .into()
-    }
-
-    fn view_feats<'a>(&'a self, player: &'a Player, feat_record: &'a FeatRecord) -> Element<'a> {
-        fn view_feat<'a>(feat: &'a Feat) -> Element<'a> {
-            let icon: Element<'_> = match &feat.icon {
-                Some(icon) => Image::new(icon).into(),
-                None => horizontal_space().width(40).into(),
-            };
-
-            let desc = feat
-                .desc
-                .as_ref()
-                .map(|x| x.data.as_str())
-                .unwrap_or_default();
-
-            row![icon, text(&feat.name.data).width(120), text(desc),]
-                .padding(16)
-                .spacing(16)
-                .into()
-        }
-
-        let feats = {
-            let feats = player.feats.list_ref.get();
-            let feats = feats
-                .iter()
-                .map(|x| x.get())
-                .filter_map(|x| {
-                    let id: usize = (*x).into();
-                    feat_record.feats.get(&id)
-                })
-                .map(view_feat)
-                .intersperse_with(|| horizontal_rule(2).into());
-            bordered_container(Column::from_iter(feats).spacing(16))
-        };
-
-        scrollable(container(feats).padding(32)).into()
     }
 
     fn view_spells<'a>(&'a self, player: &'a Player, spell_record: &'a SpellRecord) -> Element<'a> {
@@ -258,7 +237,9 @@ impl State {
             .push(
                 TabMode::Feats,
                 TabLabel::Text("Feats".to_string()),
-                self.view_feats(player, feat_record),
+                self.feat_panel
+                    .view(player, feat_record)
+                    .map(Message::FeatPanel),
             );
 
         if is_caster {

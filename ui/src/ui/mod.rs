@@ -219,3 +219,35 @@ pub fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
 
     Ok(entries)
 }
+
+pub fn hoverable<'a, Msg>(
+    element: impl Into<Element<'a, Msg>>,
+    index: usize,
+    selected_entry: Option<usize>,
+    hovered_entry: Option<usize>,
+    on_enter: impl FnOnce(usize) -> Msg,
+    on_exit: impl FnOnce(usize) -> Msg,
+    on_press: impl FnOnce(usize) -> Msg,
+) -> iced::widget::Container<'a, Msg>
+where
+    Msg: Clone + 'a,
+{
+    let items = iced::widget::mouse_area(element)
+        .on_enter(on_enter(index))
+        .on_exit(on_exit(index))
+        .on_press(on_press(index));
+
+    container(items).style(move |theme: &iced::Theme| {
+        let p = theme.extended_palette();
+        container::Style {
+            background: if selected_entry == Some(index) {
+                Some(iced::Background::Color(p.primary.strong.color))
+            } else if hovered_entry == Some(index) {
+                Some(iced::Background::Color(p.background.strong.color))
+            } else {
+                None
+            },
+            ..Default::default()
+        }
+    })
+}
