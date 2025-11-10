@@ -1,23 +1,20 @@
 #![allow(unstable_name_collisions)]
 
 mod feat_panel;
+mod spell_panel;
 
-use iced::{
-    Length,
+use iced::
     widget::{
-        Column, column, container, horizontal_rule,
-        image::{Handle, Image},
-        row, scrollable, text, vertical_space,
-    },
-};
+        column, text, vertical_space,
+    }
+;
 use iced_aw::{TabLabel, grid, grid_row, tabs::Tabs};
-use itertools::Itertools;
 use nwn_lib::files::gff::field::Field;
 
 use crate::{
     feat::FeatRecord,
     field_ref::FieldRef,
-    player::{Player, PlayerClass},
+    player::Player,
     spell::SpellRecord,
 };
 
@@ -36,6 +33,7 @@ pub enum Message {
     TabSelected(TabMode),
     StatChanged { stat: Stat, new_value: u8 },
     FeatPanel(feat_panel::Message),
+    SpellPanel(spell_panel::Message),
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -48,23 +46,6 @@ pub enum TabMode {
     Feats,
 }
 
-fn bordered_container<'a>(content: impl Into<Element<'a>>) -> iced::widget::Container<'a, Message> {
-    fn style(theme: &iced::Theme) -> container::Style {
-        let palette = theme.palette();
-
-        iced::widget::container::Style {
-            border: iced::Border {
-                width: 1.0,
-                color: palette.text,
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    }
-
-    container(content).style(style)
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct State {
     pub selected_player: usize,
@@ -72,6 +53,7 @@ pub struct State {
     pub tab_mode: TabMode,
 
     feat_panel: feat_panel::State,
+    spell_panel: spell_panel::State,
 }
 impl State {
     pub fn new(players: Vec<Player>) -> Self {
@@ -80,6 +62,7 @@ impl State {
             selected_player: 0,
             players,
             feat_panel: Default::default(),
+            spell_panel: Default::default(),
         }
     }
 
@@ -109,6 +92,7 @@ impl State {
                 }
             }
             Message::FeatPanel(m) => self.feat_panel.update(m),
+            Message::SpellPanel(m) => self.spell_panel.update(m),
         }
     }
 
@@ -166,56 +150,6 @@ impl State {
         .into()
     }
 
-    fn view_spells<'a>(&'a self, player: &'a Player, spell_record: &'a SpellRecord) -> Element<'a> {
-        let caster_classes = player.classes.iter().filter(|c| c.is_caster);
-
-        fn view_class<'a>(class: &'a PlayerClass, spell_record: &'a SpellRecord) -> Element<'a> {
-            let class_name = class.class.get().to_string();
-            let class_name = container(text(class_name).size(20)).padding(16);
-
-            let spells = class
-                .spell_known_list
-                .iter()
-                .flatten()
-                .flat_map(|lst| lst.spells.iter())
-                .filter_map(|spell| {
-                    let spell = spell_record.spells.get(&(spell.0 as usize))?;
-
-                    let icon: Element<'_> = match &spell.icon {
-                        Some(handle) => Image::<Handle>::new(handle).width(40).height(40).into(),
-                        None => vertical_space().width(40).into(),
-                    };
-
-                    let desc = match spell.desc.as_ref() {
-                        Some(desc) => desc.data.as_str(),
-                        None => "",
-                    };
-
-                    let elem: Element<'_> =
-                        row![icon, text(&spell.name.data).width(120), text(desc)]
-                            .width(Length::Fill)
-                            .spacing(16)
-                            .padding(16)
-                            .into();
-                    Some(elem)
-                });
-
-            let spells = Column::from_iter(spells.intersperse_with(|| horizontal_rule(2).into()))
-                .spacing(16);
-
-            bordered_container(column![class_name, horizontal_rule(4), spells].width(Length::Fill))
-                .width(Length::Fill)
-                .into()
-        }
-
-        let classes = caster_classes.map(|class| view_class(class, spell_record));
-        let classes = classes.intersperse_with(|| vertical_space().height(32).into());
-
-        scrollable(Column::from_iter(classes).padding(32))
-            .width(Length::Fill)
-            .into()
-    }
-
     pub fn view<'a>(
         &'a self,
         spell_record: &'a SpellRecord,
@@ -246,7 +180,9 @@ impl State {
             tabs = tabs.push(
                 TabMode::Spells,
                 TabLabel::Text("Spells".to_string()),
-                self.view_spells(player, spell_record),
+                self.spell_panel
+                    .view(player, spell_record)
+                    .map(Message::SpellPanel),
             )
         }
 

@@ -1,4 +1,4 @@
-use crate::ui::SaveEntry;
+use crate::ui::{HoverableEvent, HoverableState, SaveEntry};
 use iced::{
     Length, Task,
     widget::{Column, button, column, horizontal_space, row, text, vertical_space},
@@ -9,9 +9,7 @@ use std::path::Path;
 pub enum Message {
     Close,
     Open(usize),
-    MouseEntered(usize),
-    MouseExited(usize),
-    EntrySelected(usize),
+    HoverableEvent(HoverableEvent),
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -19,8 +17,7 @@ type Element<'a> = iced::Element<'a, Message>;
 #[derive(Debug, Default)]
 pub struct State {
     pub active: bool,
-    hovered_entry: Option<usize>,
-    selected_entry: Option<usize>,
+    hoverable_state: HoverableState,
     save_entries: Vec<SaveEntry>,
 }
 impl State {
@@ -35,23 +32,13 @@ impl State {
 
     pub fn close(&mut self) {
         self.active = false;
-        self.selected_entry = None;
+        self.hoverable_state.selected_entry = None;
     }
 
     pub fn update(&mut self, msg: Message) -> iced::Task<crate::Message> {
         match msg {
             Message::Close => self.close(),
-            Message::MouseEntered(idx) => {
-                self.hovered_entry = Some(idx);
-            }
-            Message::MouseExited(idx) => {
-                if Some(idx) == self.hovered_entry {
-                    self.hovered_entry = None;
-                }
-            }
-            Message::EntrySelected(idx) => {
-                self.selected_entry = Some(idx);
-            }
+            Message::HoverableEvent(e) => e.update(&mut self.hoverable_state),
             Message::Open(idx) => {
                 if let Some(entry) = self.save_entries.get(idx) {
                     let mut file_path = entry.path.join("resgff.zip");
@@ -83,16 +70,7 @@ impl State {
 
         let items = row![image, label].width(Length::Fill).padding(8.0);
 
-        super::hoverable(
-            items,
-            index,
-            self.selected_entry,
-            self.hovered_entry,
-            Message::MouseEntered,
-            Message::MouseExited,
-            Message::EntrySelected,
-        )
-        .into()
+        super::hoverable(items, index, &self.hoverable_state, Message::HoverableEvent).into()
     }
 
     pub fn view(&self) -> Element<'_> {
@@ -113,7 +91,8 @@ impl State {
             row![
                 horizontal_space().width(Length::Fill),
                 button("Close").on_press(Message::Close),
-                button("Open").on_press_maybe(self.selected_entry.map(Message::Open)),
+                button("Open")
+                    .on_press_maybe(self.hoverable_state.selected_entry.map(Message::Open)),
             ]
             .height(Length::Fixed(32.0))
             .spacing(16),

@@ -220,29 +220,63 @@ pub fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
     Ok(entries)
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct HoverableState {
+    selected_entry: Option<usize>,
+    hovered_entry: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HoverableEvent {
+    MouseEntered(usize),
+    MouseExited(usize),
+    EntrySelected(usize),
+}
+impl HoverableEvent {
+    pub fn update(self, state: &mut HoverableState) {
+        match self {
+            Self::MouseEntered(i) => {
+                state.hovered_entry = Some(i);
+            }
+            Self::MouseExited(i) => {
+                if Some(i) == state.hovered_entry {
+                    state.hovered_entry = None;
+                }
+            }
+            Self::EntrySelected(i) => {
+                state.selected_entry = Some(i);
+            }
+        }
+    }
+}
+
 pub fn hoverable<'a, Msg>(
     element: impl Into<Element<'a, Msg>>,
     index: usize,
-    selected_entry: Option<usize>,
-    hovered_entry: Option<usize>,
-    on_enter: impl FnOnce(usize) -> Msg,
-    on_exit: impl FnOnce(usize) -> Msg,
-    on_press: impl FnOnce(usize) -> Msg,
+    HoverableState {
+        selected_entry,
+        hovered_entry,
+    }: &'a HoverableState,
+    message_handler: impl Fn(HoverableEvent) -> Msg,
 ) -> iced::widget::Container<'a, Msg>
 where
     Msg: Clone + 'a,
 {
+    let on_enter = message_handler(HoverableEvent::MouseEntered(index));
+    let on_exit = message_handler(HoverableEvent::MouseExited(index));
+    let on_press = message_handler(HoverableEvent::EntrySelected(index));
+
     let items = iced::widget::mouse_area(element)
-        .on_enter(on_enter(index))
-        .on_exit(on_exit(index))
-        .on_press(on_press(index));
+        .on_enter(on_enter)
+        .on_exit(on_exit)
+        .on_press(on_press);
 
     container(items).style(move |theme: &iced::Theme| {
         let p = theme.extended_palette();
         container::Style {
-            background: if selected_entry == Some(index) {
+            background: if selected_entry == &Some(index) {
                 Some(iced::Background::Color(p.primary.strong.color))
-            } else if hovered_entry == Some(index) {
+            } else if hovered_entry == &Some(index) {
                 Some(iced::Background::Color(p.background.strong.color))
             } else {
                 None

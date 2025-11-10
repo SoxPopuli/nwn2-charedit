@@ -3,7 +3,7 @@
 use crate::{
     feat::{Feat, FeatRecord},
     player::Player,
-    ui::hoverable,
+    ui::{HoverableEvent, HoverableState, hoverable},
 };
 use iced::{
     Length,
@@ -30,27 +30,16 @@ fn bordered_container<'a>(content: impl Into<Element<'a>>) -> iced::widget::Cont
 
 #[derive(Debug, Default, Clone)]
 pub struct State {
-    selected_entry: Option<usize>,
-    hovered_entry: Option<usize>,
+    hoverable_state: HoverableState,
 }
 impl State {
     pub fn update(&mut self, msg: Message) {
         match msg {
-            Message::MouseEntered(i) => {
-                self.hovered_entry = Some(i);
-            }
-            Message::MouseExited(i) => {
-                if Some(i) == self.hovered_entry {
-                    self.hovered_entry = None;
-                }
-            }
-            Message::EntrySelected(i) => {
-                self.selected_entry = Some(i);
-            }
+            Message::HoverableEvent(e) => e.update(&mut self.hoverable_state),
         }
     }
 
-    fn view_feat<'a>(&self, index: usize, feat: &'a Feat) -> Element<'a> {
+    fn view_feat<'a>(&'a self, index: usize, feat: &'a Feat) -> Element<'a> {
         let icon: Element<'_> = match &feat.icon {
             Some(icon) => Image::new(icon).into(),
             None => horizontal_space().width(40).into(),
@@ -63,23 +52,16 @@ impl State {
             .unwrap_or_default();
 
         let item = row![icon, text(&feat.name.data).width(120), text(desc),]
+            .width(Length::Fill)
             .padding(16)
             .spacing(16);
 
-        hoverable(
-            item,
-            index,
-            self.selected_entry,
-            self.hovered_entry,
-            Message::MouseEntered,
-            Message::MouseExited,
-            Message::EntrySelected,
-        )
-        .width(Length::Fill)
-        .into()
+        hoverable(item, index, &self.hoverable_state, Message::HoverableEvent)
+            .width(Length::Fill)
+            .into()
     }
 
-    pub fn view<'a>(&self, player: &'a Player, feat_record: &'a FeatRecord) -> Element<'a> {
+    pub fn view<'a>(&'a self, player: &'a Player, feat_record: &'a FeatRecord) -> Element<'a> {
         let feats = {
             let feats = player.feats.list_ref.get();
             let feats = feats
@@ -101,9 +83,7 @@ impl State {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
-    MouseEntered(usize),
-    MouseExited(usize),
-    EntrySelected(usize),
+    HoverableEvent(HoverableEvent),
 }
 
 pub type Element<'a> = iced::Element<'a, Message>;
