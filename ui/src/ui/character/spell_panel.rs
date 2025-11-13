@@ -8,8 +8,8 @@ use crate::{
 use iced::{
     Length,
     widget::{
-        Column, Image, column, container, horizontal_rule, image::Handle, row, scrollable, text,
-        vertical_space,
+        Column, Image, column, combo_box, container, horizontal_rule, image::Handle, row,
+        scrollable, text, vertical_space,
     },
 };
 use itertools::Itertools;
@@ -17,20 +17,87 @@ use itertools::Itertools;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     HoverableEvent(HoverableEvent),
+    ClassSelected(usize),
 }
 
 pub type Element<'a> = iced::Element<'a, Message>;
 
 #[derive(Debug, Default, Clone)]
+struct ClassOption {
+    index: usize,
+    name: String,
+}
+impl std::fmt::Display for ClassOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct State {
+    class_options: combo_box::State<ClassOption>,
+    selected_class: ClassOption,
     hoverable_state: HoverableState,
 }
 impl State {
+    pub fn new(player: &Player) -> Self {
+        let class_options = combo_box::State::new(
+            player
+                .classes
+                .iter()
+                .enumerate()
+                .filter(|(_, class)| class.is_caster)
+                .map(|(i, class)| {
+                    let name = class.class.get().to_string();
+                    ClassOption { index: i, name }
+                })
+                .collect(),
+        );
+
+        let selected_class = class_options
+            .options()
+            .first()
+            .cloned()
+            .expect("No caster classes found");
+
+        Self {
+            class_options,
+            selected_class,
+            hoverable_state: Default::default(),
+        }
+    }
+
     pub fn update(&mut self, msg: Message) {
         match msg {
             Message::HoverableEvent(e) => e.update(&mut self.hoverable_state),
+            Message::ClassSelected(i) => {
+                self.selected_class = self.class_options.options()[i].clone();
+            }
         }
     }
+
+    fn view_spell<'a>(&self, spell_record: &'a SpellRecord, spell_id: u16) -> Option<Element<'a>> {
+        let spell = spell_record.spells.get(&spell_id)?;
+
+        let icon: Element<'_> = match &spell.icon {
+            Some(handle) => Image::<Handle>::new(handle).width(40).height(40).into(),
+            None => vertical_space().width(40).into(),
+        };
+
+        let desc = match spell.desc.as_ref() {
+            Some(desc) => desc.data.as_str(),
+            None => "",
+        };
+
+        let elem: Element<'_> = row![icon, text(&spell.name.data).width(120), text(desc)]
+            .width(Length::Fill)
+            .spacing(16)
+            .padding(16)
+            .into();
+
+        Some(elem)
+    }
+
     fn view_class<'a>(
         &'a self,
         class: &'a PlayerClass,
@@ -44,32 +111,11 @@ impl State {
             .iter()
             .flatten()
             .flat_map(|lst| lst.spells.iter())
-            .filter_map(|spell| {
-                let spell = spell_record.spells.get(&(spell.0 as usize))?;
-
-                let icon: Element<'_> = match &spell.icon {
-                    Some(handle) => Image::<Handle>::new(handle).width(40).height(40).into(),
-                    None => vertical_space().width(40).into(),
-                };
-
-                let desc = match spell.desc.as_ref() {
-                    Some(desc) => desc.data.as_str(),
-                    None => "",
-                };
-
-                let elem: Element<'_> = row![icon, text(&spell.name.data).width(120), text(desc)]
-                    .width(Length::Fill)
-                    .spacing(16)
-                    .padding(16)
-                    .into();
-
-                Some(elem)
-            })
+            .filter_map(|spell| self.view_spell(spell_record, spell.0))
             .enumerate()
             .map(|(i, e)| hoverable(e, i, &self.hoverable_state, Message::HoverableEvent).into());
 
-        let spells =
-            Column::from_iter(spells.intersperse_with(|| horizontal_rule(1).into()));
+        let spells = Column::from_iter(spells.intersperse_with(|| horizontal_rule(1).into()));
 
         bordered_container(column![class_name, horizontal_rule(4), spells].width(Length::Fill))
             .width(Length::Fill)
@@ -82,9 +128,19 @@ impl State {
         let classes = caster_classes.map(|class| self.view_class(class, spell_record));
         let classes = classes.intersperse_with(|| vertical_space().height(32).into());
 
-        scrollable(Column::from_iter(classes).padding(32))
-            .width(Length::Fill)
-            .into()
+        let combo = iced::widget::combo_box(
+            &self.class_options,
+            "Select class",
+            Some(&self.selected_class),
+            |item| Message::ClassSelected(item.index),
+        );
+
+        let items = column![
+            combo,
+            scrollable(Column::from_iter(classes).padding(32)).width(Length::Fill)
+        ];
+
+        items.into()
     }
 }
 

@@ -32,7 +32,7 @@ pub struct Spell {
     pub spell_levels: SpellLevels,
 }
 
-pub type SpellId = usize;
+pub type SpellId = u16;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SpellRecord {
@@ -147,7 +147,7 @@ impl SpellRecord {
             .data
             .row_iter()
             .enumerate()
-            .filter_map(|(i, r)| from_row(r).map(|x| (i, x)))
+            .filter_map(|(i, r)| from_row(r).map(|x| (i as u16, x)))
             .collect();
 
         Ok(Self { spells })

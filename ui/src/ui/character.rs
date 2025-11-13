@@ -57,12 +57,14 @@ pub struct State {
 }
 impl State {
     pub fn new(players: Vec<Player>) -> Self {
+        let spell_panel = spell_panel::State::new(&players[0]);
+
         Self {
             tab_mode: TabMode::Stats,
             selected_player: 0,
             players,
             feat_panel: Default::default(),
-            spell_panel: Default::default(),
+            spell_panel,
         }
     }
 
@@ -144,7 +146,7 @@ impl State {
             text(format!("Level {level} {race}")),
             text(classes),
             vertical_space().height(32),
-            stat_grid
+            stat_grid,
         ]
         .padding(16)
         .into()
