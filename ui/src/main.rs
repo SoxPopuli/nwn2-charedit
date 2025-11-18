@@ -1,3 +1,5 @@
+#![allow(unstable_name_collisions)]
+
 mod error;
 mod feat;
 mod field_ref;
@@ -167,7 +169,7 @@ macro_rules! popup_opt {
     }};
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct App {
     pub save_file: Option<SaveFile>,
     pub characters: ui::CharacterState,

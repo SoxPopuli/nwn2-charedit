@@ -5,11 +5,12 @@ use iced::widget::image::Handle;
 use crate::{
     Tlk,
     error::Error,
+    ids::class::Class,
     tlk_string_ref::TlkStringRef,
     ui::settings::{IconName, IconPath},
 };
 
-type SpellLevel = Option<std::num::NonZeroU8>;
+type SpellLevel = Option<u8>;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SpellLevels {
@@ -151,5 +152,87 @@ impl SpellRecord {
             .collect();
 
         Ok(Self { spells })
+    }
+
+    pub fn get_spells_for_class(&self, class: Class) -> Option<Vec<&Spell>> {
+        macro_rules! for_class {
+            ($class:ident) => {
+                Some(
+                    self.spells
+                        .values()
+                        .filter(|x| x.spell_levels.$class.is_some())
+                        .collect(),
+                )
+            };
+        }
+
+        match class {
+            Class::Bard => for_class!(bard),
+            Class::Cleric => for_class!(cleric),
+            Class::Druid => for_class!(druid),
+            Class::Paladin => for_class!(paladin),
+            Class::Ranger => for_class!(ranger),
+            Class::Wizard | Class::Sorcerer => for_class!(wiz_sorc),
+            Class::Warlock => for_class!(warlock),
+            _ => None,
+        }
+    }
+
+    fn for_spells_for_class(&self, class: Class, f: impl FnMut(&Spell)) {
+        macro_rules! for_class {
+            ($class:ident) => {
+                self.spells
+                    .values()
+                    .filter(|x| x.spell_levels.$class.is_some())
+                    .for_each(f)
+            };
+        }
+
+        match class {
+            Class::Bard => for_class!(bard),
+            Class::Cleric => for_class!(cleric),
+            Class::Druid => for_class!(druid),
+            Class::Paladin => for_class!(paladin),
+            Class::Ranger => for_class!(ranger),
+            Class::Wizard | Class::Sorcerer => for_class!(wiz_sorc),
+            Class::Warlock => for_class!(warlock),
+            _ => (),
+        }
+    }
+
+    pub fn get_spells_per_class_level<'a>(&'a self, class: Class) -> [Option<Vec<&'a Spell>>; 10] {
+        let mut spells_per_level: [Option<Vec<&'a Spell>>; 10] = [const { None }; 10];
+
+        let mut set_spell = |spell, level| match &mut spells_per_level[level as usize] {
+            Some(spells) => {
+                spells.push(spell);
+            }
+            s @ None => {
+                *s = Some(vec![spell]);
+            }
+        };
+
+        for s in self.spells.values() {
+            macro_rules! set_spells_for_class {
+                ($class:ident) => {
+                    if let Some(lvl) = s.spell_levels.$class {
+                        set_spell(s, lvl)
+                    }
+                };
+            }
+
+            match class {
+                Class::Bard => set_spells_for_class!(bard),
+                Class::Cleric => set_spells_for_class!(cleric),
+                Class::Druid => set_spells_for_class!(druid),
+                Class::Paladin => set_spells_for_class!(paladin),
+                Class::Ranger => set_spells_for_class!(ranger),
+                Class::Wizard | Class::Sorcerer => set_spells_for_class!(wiz_sorc),
+                Class::Warlock => set_spells_for_class!(warlock),
+                _ => {}
+            }
+        }
+
+        spells_per_level
     }
 }

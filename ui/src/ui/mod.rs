@@ -1,5 +1,6 @@
 pub mod character;
 pub mod save_file;
+pub mod search_window;
 pub mod select_file;
 pub mod settings;
 
@@ -220,10 +221,16 @@ pub fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
     Ok(entries)
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct HoverableState {
     selected_entry: Option<usize>,
     hovered_entry: Option<usize>,
+}
+impl HoverableState {
+    pub fn reset(&mut self) {
+        self.selected_entry = None;
+        self.hovered_entry = None;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -256,7 +263,7 @@ pub fn hoverable<'a, Msg>(
     HoverableState {
         selected_entry,
         hovered_entry,
-    }: &'a HoverableState,
+    }: HoverableState,
     message_handler: impl Fn(HoverableEvent) -> Msg,
 ) -> iced::widget::Container<'a, Msg>
 where
@@ -273,11 +280,15 @@ where
 
     container(items).style(move |theme: &iced::Theme| {
         let p = theme.extended_palette();
+
+        let hover_bg = p.primary.strong.color;
+        let selected_bg = p.primary.weak.color;
+
         container::Style {
-            background: if selected_entry == &Some(index) {
-                Some(iced::Background::Color(p.primary.strong.color))
-            } else if hovered_entry == &Some(index) {
-                Some(iced::Background::Color(p.background.strong.color))
+            background: if hovered_entry == Some(index) {
+                Some(iced::Background::Color(hover_bg))
+            } else if selected_entry == Some(index) {
+                Some(iced::Background::Color(selected_bg))
             } else {
                 None
             },

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-iced = { version = "0.13.1", features = ["advanced", "image"] }
+iced = { version = "0.13.1", features = ["advanced", "image", "lazy"] }
 iced_aw = { version = "0.12.2", features = ["menu", "tabs", "tab_bar"] }
 image = { version = "0.25.8", features = ["tga"] }
 rfd = "0.15.4"
@@ -19,3 +19,4 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 itertools.workspace = true
 chrono = "0.4.42"
+rayon = "1.11.0"

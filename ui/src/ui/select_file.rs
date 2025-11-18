@@ -70,7 +70,7 @@ impl State {
 
         let items = row![image, label].width(Length::Fill).padding(8.0);
 
-        super::hoverable(items, index, &self.hoverable_state, Message::HoverableEvent).into()
+        super::hoverable(items, index, self.hoverable_state, Message::HoverableEvent).into()
     }
 
     pub fn view(&self) -> Element<'_> {

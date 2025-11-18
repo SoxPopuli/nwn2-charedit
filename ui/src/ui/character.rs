@@ -1,22 +1,11 @@
-#![allow(unstable_name_collisions)]
-
 mod feat_panel;
 mod spell_panel;
 
-use iced::
-    widget::{
-        column, text, vertical_space,
-    }
-;
+use iced::widget::{column, text, vertical_space};
 use iced_aw::{TabLabel, grid, grid_row, tabs::Tabs};
 use nwn_lib::files::gff::field::Field;
 
-use crate::{
-    feat::FeatRecord,
-    field_ref::FieldRef,
-    player::Player,
-    spell::SpellRecord,
-};
+use crate::{feat::FeatRecord, field_ref::FieldRef, player::Player, spell::SpellRecord};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stat {
@@ -46,7 +35,7 @@ pub enum TabMode {
     Feats,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default)]
 pub struct State {
     pub selected_player: usize,
     pub players: Vec<Player>,
@@ -93,7 +82,7 @@ impl State {
                     Stat::Charisma => set_stat(&mut player.attributes.cha),
                 }
             }
-            Message::FeatPanel(m) => self.feat_panel.update(m),
+            Message::FeatPanel(m) => self.feat_panel.update(&mut self.players[0], m),
             Message::SpellPanel(m) => self.spell_panel.update(m),
         }
     }
