@@ -33,7 +33,7 @@ pub struct Spell {
     pub spell_levels: SpellLevels,
 }
 
-pub type SpellId = u16;
+pub type SpellId = usize;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SpellRecord {
@@ -148,7 +148,7 @@ impl SpellRecord {
             .data
             .row_iter()
             .enumerate()
-            .filter_map(|(i, r)| from_row(r).map(|x| (i as u16, x)))
+            .filter_map(|(i, r)| from_row(r).map(|x| (i, x)))
             .collect();
 
         Ok(Self { spells })
@@ -200,23 +200,26 @@ impl SpellRecord {
         }
     }
 
-    pub fn get_spells_per_class_level<'a>(&'a self, class: Class) -> [Option<Vec<&'a Spell>>; 10] {
-        let mut spells_per_level: [Option<Vec<&'a Spell>>; 10] = [const { None }; 10];
+    pub fn get_spells_per_class_level<'a>(
+        &'a self,
+        class: Class,
+    ) -> [Option<Vec<(SpellId, &'a Spell)>>; 10] {
+        let mut spells_per_level: [Option<Vec<(SpellId, &'a Spell)>>; 10] = [const { None }; 10];
 
-        let mut set_spell = |spell, level| match &mut spells_per_level[level as usize] {
+        let mut set_spell = |id, spell, level| match &mut spells_per_level[level as usize] {
             Some(spells) => {
-                spells.push(spell);
+                spells.push((id, spell));
             }
             s @ None => {
-                *s = Some(vec![spell]);
+                *s = Some(vec![(id, spell)]);
             }
         };
 
-        for s in self.spells.values() {
+        for (id, s) in self.spells.iter().map(|(id, spell)| (*id, spell)) {
             macro_rules! set_spells_for_class {
                 ($class:ident) => {
                     if let Some(lvl) = s.spell_levels.$class {
-                        set_spell(s, lvl)
+                        set_spell(id, s, lvl)
                     }
                 };
             }

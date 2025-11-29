@@ -46,13 +46,32 @@ impl FeatList {
 
         match &mut field_lock.field {
             Field::List(lst) => {
-                lst.push(Self::create_feat_struct(feat));
+                lst.push(s.clone());
             }
             x => panic!("Unexpected field: {x:?}"),
         };
 
         let field_ref = FieldRef::new(s.fields[0].clone(), Field::expect_word).unwrap();
         self.list_ref.value.push(field_ref);
+    }
+
+    pub fn swap_feat(&mut self, index: usize, new_id: FeatId) {
+        let mut lock = self.list_ref.field.write().unwrap();
+
+        let new_feat = Self::create_feat_struct(new_id);
+
+        match &mut lock.field {
+            Field::List(lst) => {
+                if let Some(old_feat) = lst.get_mut(index) {
+                    *old_feat = new_feat.clone();
+                }
+            }
+            x => panic!("Unexpected field: {x:?}"),
+        }
+
+        if let Some(old_ref) = self.list_ref.value.get_mut(index) {
+            *old_ref = FieldRef::new(new_feat.fields[0].clone(), Field::expect_word).unwrap();
+        }
     }
 
     pub fn remove_feat(&mut self, index: usize) {

@@ -21,4 +21,5 @@ codegen-units = 1
 
 [profile.rel-dbg]
 inherits = "release"
+strip = false
 debug = true

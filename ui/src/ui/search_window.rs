@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use crate::{
-    feat::{Feat, FeatRecord},
+    feat::{Feat, FeatId, FeatRecord},
     ids::class::Class,
-    spell::{Spell, SpellRecord},
+    spell::{Spell, SpellId, SpellRecord},
     ui::{HoverableEvent, HoverableState, hoverable},
 };
 use iced::{
@@ -17,9 +15,10 @@ use itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
-    HoverableEvent(HoverableEvent),
+    HoverableEvent((usize, HoverableEvent)),
     TextChanged(String),
     Close,
+    Confirm,
 }
 
 type Element<'a> = iced::Element<'a, Message>;
@@ -44,16 +43,14 @@ pub enum SearchMode {
 
 #[derive(Default)]
 pub struct State {
-    mode: SearchMode,
-    search_text: String,
-    hoverable_state: HoverableState,
+    pub mode: SearchMode,
+    pub search_text: String,
+    pub hoverable_state: HoverableState,
+    pub selected_id: Option<usize>,
 }
 impl State {
     pub fn is_active(&self) -> bool {
-        match self.mode {
-            SearchMode::Add | SearchMode::Swap(_) => true,
-            SearchMode::None => false,
-        }
+        matches!(self.mode, SearchMode::Add | SearchMode::Swap(_))
     }
 
     pub fn open(&mut self, mode: SearchMode) {
@@ -64,6 +61,7 @@ impl State {
         self.mode = SearchMode::None;
         self.search_text.clear();
         self.hoverable_state.reset();
+        self.selected_id = None;
     }
 
     pub fn update(&mut self, msg: Message) {
@@ -72,9 +70,28 @@ impl State {
                 self.search_text = new_text;
                 self.hoverable_state.reset();
             }
-            Message::HoverableEvent(e) => e.update(&mut self.hoverable_state),
+            Message::HoverableEvent((id, e)) => {
+                if let HoverableEvent::EntrySelected(_) = e {
+                    self.selected_id = Some(id);
+                }
+
+                e.update(&mut self.hoverable_state);
+            }
             Message::Close => self.close(),
+            Message::Confirm => self.close(),
         }
+    }
+
+    fn view_feats<'a>(
+        &self,
+        feats: impl Iterator<Item = (FeatId, &'a Feat)>,
+    ) -> Column<'a, Message> {
+        let elements = feats
+            .enumerate()
+            .map(|(index, (feat_id, feat))| view_feat(feat_id, feat, index, self.hoverable_state))
+            .intersperse_with(|| horizontal_rule(2).into());
+
+        Column::from_iter(elements).width(Length::Fill)
     }
 
     pub fn view<'a>(&self, kind: SearchKind<'a>) -> Element<'a> {
@@ -82,16 +99,17 @@ impl State {
 
         let body: Element<'a> = match kind {
             SearchKind::Feats(record) => {
-                let feats = record.feats.values();
-                let search = self.search_text.to_ascii_lowercase();
+                let feats = record.feats.iter().map(|(id, feat)| (*id, feat));
 
-                let elements = feats
-                    .filter(|feat| feat.name.data.to_ascii_lowercase().contains(&search))
-                    .enumerate()
-                    .map(|(index, feat)| view_feat(feat, index, self.hoverable_state))
-                    .intersperse_with(|| horizontal_rule(2).into());
-
-                Column::from_iter(elements).width(Length::Fill).into()
+                if self.search_text.len() < 3 {
+                    Column::new()
+                } else {
+                    let search = self.search_text.to_ascii_lowercase();
+                    self.view_feats(feats.filter(|(_id, feat)| {
+                        feat.name.data.to_ascii_lowercase().contains(&search)
+                    }))
+                }
+                .into()
             }
             SearchKind::Spells {
                 spell_record,
@@ -105,7 +123,9 @@ impl State {
                     Some(spells) => spells
                         .iter()
                         .enumerate()
-                        .map(|(index, spell)| view_spell(spell, index, self.hoverable_state))
+                        .map(|(index, (id, spell))| {
+                            view_spell(*id, spell, index, self.hoverable_state)
+                        })
                         .intersperse_with(|| horizontal_rule(2).into())
                         .collect(),
 
@@ -123,7 +143,7 @@ impl State {
         let footer = row![
             horizontal_space().width(Length::Fill),
             button("Close").on_press(Message::Close),
-            button("Select")
+            button("Select").on_press_maybe(self.selected_id.map(|_| Message::Confirm)),
         ]
         .height(Length::Fixed(32.0))
         .spacing(16);
@@ -135,7 +155,12 @@ impl State {
     }
 }
 
-fn view_feat(feat: &Feat, index: usize, hoverable_state: HoverableState) -> Element<'static> {
+fn view_feat(
+    feat_id: FeatId,
+    feat: &Feat,
+    index: usize,
+    hoverable_state: HoverableState,
+) -> Element<'static> {
     let icon: Element<'_> = match &feat.icon {
         Some(icon) => Image::new(icon).into(),
         None => horizontal_space().width(40).into(),
@@ -155,12 +180,19 @@ fn view_feat(feat: &Feat, index: usize, hoverable_state: HoverableState) -> Elem
         .padding(16)
         .spacing(16);
 
-    hoverable(item, index, hoverable_state, Message::HoverableEvent)
-        .width(Length::Fill)
-        .into()
+    hoverable(item, index, hoverable_state, |evt| {
+        Message::HoverableEvent((feat_id, evt))
+    })
+    .width(Length::Fill)
+    .into()
 }
 
-fn view_spell(spell: &Spell, index: usize, hoverable_state: HoverableState) -> Element<'static> {
+fn view_spell(
+    spell_id: SpellId,
+    spell: &Spell,
+    index: usize,
+    hoverable_state: HoverableState,
+) -> Element<'static> {
     let icon: Element<'_> = match &spell.icon {
         Some(handle) => Image::<Handle>::new(handle).width(40).height(40).into(),
         None => horizontal_space().width(40).into(),
@@ -179,7 +211,9 @@ fn view_spell(spell: &Spell, index: usize, hoverable_state: HoverableState) -> E
         .spacing(16)
         .padding(16);
 
-    hoverable(item, index, hoverable_state, Message::HoverableEvent)
-        .width(Length::Fill)
-        .into()
+    hoverable(item, index, hoverable_state, |evt| {
+        Message::HoverableEvent((spell_id, evt))
+    })
+    .width(Length::Fill)
+    .into()
 }

@@ -119,7 +119,7 @@ impl State {
                     .spells
                     .iter()
                     .filter_map(|x| {
-                        let spell = spell_record.spells.get(&x.0)?;
+                        let spell = spell_record.spells.get(&(x.0 as usize))?;
                         self.view_spell(spell)
                     })
                     .enumerate()

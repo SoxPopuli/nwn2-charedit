@@ -51,6 +51,25 @@ impl State {
                 self.hoverable_state.reset();
                 player.feats.remove_feat(idx);
             }
+            Message::SearchWindow(msg @ search_window::Message::Confirm) => {
+                match self.search_window.mode {
+                    search_window::SearchMode::None => {}
+                    search_window::SearchMode::Add => {
+                        if let Some(new_id) = self.search_window.selected_id {
+                            player.feats.add_feat(new_id.try_into().unwrap());
+                        }
+                    }
+                    search_window::SearchMode::Swap(old_index) => {
+                        if let Some(new_id) = self.search_window.selected_id {
+                            player
+                                .feats
+                                .swap_feat(old_index, new_id.try_into().unwrap());
+                        }
+                    }
+                }
+
+                self.search_window.update(msg);
+            }
             Message::SearchWindow(msg) => self.search_window.update(msg),
         }
     }

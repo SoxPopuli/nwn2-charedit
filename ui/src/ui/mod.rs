@@ -221,7 +221,7 @@ pub fn get_save_folders(save_dir: &Path) -> Result<Vec<SaveEntry>, Error> {
     Ok(entries)
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HoverableState {
     selected_entry: Option<usize>,
     hovered_entry: Option<usize>,
