@@ -83,7 +83,7 @@ impl State {
                 }
             }
             Message::FeatPanel(m) => self.feat_panel.update(&mut self.players[0], m),
-            Message::SpellPanel(m) => self.spell_panel.update(m),
+            Message::SpellPanel(m) => self.spell_panel.update(&mut self.players[0], m),
         }
     }
 

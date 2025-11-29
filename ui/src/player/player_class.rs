@@ -73,6 +73,25 @@ impl SpellKnownList {
         self.spells.push(spell);
     }
 
+    pub fn swap_spell(&mut self, index: usize, new_id: Spell) {
+        let mut field_lock = self.list_ref.write().unwrap();
+
+        let new_spell = Self::create_spell_struct(new_id);
+
+        match &mut field_lock.field {
+            Field::List(lst) => {
+                if let Some(old_spell) = lst.get_mut(index) {
+                    *old_spell = new_spell.clone();
+                }
+            }
+            x => panic!("Unexpected field: {x:?}"),
+        }
+
+        if let Some(old_ref) = self.spells.get_mut(index) {
+            *old_ref = new_id;
+        }
+    }
+
     pub fn remove_spell(&mut self, index: usize) {
         let mut field_lock = self.list_ref.write().unwrap();
 

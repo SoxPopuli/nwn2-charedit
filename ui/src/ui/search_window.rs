@@ -7,8 +7,8 @@ use crate::{
 use iced::{
     Length,
     widget::{
-        Column, Image, button, column, container, horizontal_rule, horizontal_space, image::Handle,
-        row, scrollable, text, text_input,
+        Column, Image, button, column, container, horizontal_rule, horizontal_space, row,
+        scrollable, text, text_input,
     },
 };
 use itertools::Itertools;
@@ -94,6 +94,22 @@ impl State {
         Column::from_iter(elements).width(Length::Fill)
     }
 
+    fn view_spells<'a>(
+        &self,
+        spells: impl Iterator<Item = (SpellId, &'a Spell)>,
+    ) -> Column<'a, Message> {
+        let elements = spells
+            .into_iter()
+            .enumerate()
+            .map(|(index, (id, spell))| view_spell(id, spell, index, self.hoverable_state))
+            .intersperse_with(|| horizontal_rule(2).into())
+            .collect();
+
+        let elements = iced::widget::Column::from_vec(elements);
+
+        elements.width(Length::Fill)
+    }
+
     pub fn view<'a>(&self, kind: SearchKind<'a>) -> Element<'a> {
         let search_bar = text_input("Search...", &self.search_text).on_input(Message::TextChanged);
 
@@ -117,24 +133,23 @@ impl State {
                 level,
             } => {
                 let spells = spell_record.get_spells_per_class_level(class);
-                let spells = spells.get(level as usize).and_then(|x| x.as_ref());
+                let spells = spells
+                    .get(level as usize)
+                    .and_then(|x| x.as_ref())
+                    .into_iter()
+                    .flatten()
+                    .map(|(id, spell)| (*id, *spell));
 
-                let elements = match spells {
-                    Some(spells) => spells
-                        .iter()
-                        .enumerate()
-                        .map(|(index, (id, spell))| {
-                            view_spell(*id, spell, index, self.hoverable_state)
-                        })
-                        .intersperse_with(|| horizontal_rule(2).into())
-                        .collect(),
+                if self.search_text.is_empty() {
+                    self.view_spells(spells).into()
+                } else {
+                    let search = self.search_text.to_ascii_lowercase();
+                    let spells = spells.filter(|(_id, spell)| {
+                        spell.name.data.to_ascii_lowercase().contains(&search)
+                    });
 
-                    None => vec![],
-                };
-
-                let elements = iced::widget::Column::from_vec(elements);
-
-                elements.into()
+                    self.view_spells(spells).into()
+                }
             }
         };
 
@@ -162,7 +177,7 @@ fn view_feat(
     hoverable_state: HoverableState,
 ) -> Element<'static> {
     let icon: Element<'_> = match &feat.icon {
-        Some(icon) => Image::new(icon).into(),
+        Some(icon) => Image::new(icon).width(40).height(40).into(),
         None => horizontal_space().width(40).into(),
     };
 
@@ -194,7 +209,7 @@ fn view_spell(
     hoverable_state: HoverableState,
 ) -> Element<'static> {
     let icon: Element<'_> = match &spell.icon {
-        Some(handle) => Image::<Handle>::new(handle).width(40).height(40).into(),
+        Some(handle) => Image::new(handle).width(40).height(40).into(),
         None => horizontal_space().width(40).into(),
     };
 
@@ -207,13 +222,13 @@ fn view_spell(
     .to_string();
 
     let item = row![icon, text(name).width(120), text(desc)]
-        .width(Length::Fill)
+        // .width(Length::Fill)
         .spacing(16)
         .padding(16);
 
     hoverable(item, index, hoverable_state, |evt| {
         Message::HoverableEvent((spell_id, evt))
     })
-    .width(Length::Fill)
+    // .width(Length::Fill)
     .into()
 }
