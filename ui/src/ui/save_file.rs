@@ -157,7 +157,7 @@ impl State {
         self.save_folder_name = format!("{:06} - {}", next_number, now.hyphenated_string());
     }
 
-    fn save(&self, save_file: &SaveFile) {
+    fn save(&mut self, save_file: &SaveFile) {
         let dest_path = save_file
             .save_dir
             .parent()
@@ -173,6 +173,8 @@ impl State {
             .set_level(rfd::MessageLevel::Info)
             .set_description(format!("Saved to {}", dest_path.display()))
             .show();
+
+        self.close();
     }
 
     pub fn update(&mut self, msg: Message, save_file: &SaveFile) {
